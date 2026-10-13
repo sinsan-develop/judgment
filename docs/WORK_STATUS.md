@@ -10,3 +10,4 @@
 - 운영 정보는 로컬 환경 문서에만 기록한다. 자동 승인 검토가 인프라 정보 포함 문서 push를 거절해 업로드 대상에서 제외했다. 코드·합성 시험·인프라 없는 설명만 동기화한다.
 - 초기 sandbox Git/SSH/CIM 제약은 native OpenSSH 및 읽기 전용 escalation으로 해소. 인증 설정 변경 없음. Python 경로 경고 발생, 테스트 exit 0. 실제 패키지 호환성 미검증.
 - 다음: Task 2–5 fixture와 독립 리뷰. 실제 학습·품질 결과는 미완료.
+- Task 2: complete. RED→GREEN 7/7. 실제 소스 심볼 읽기 확인, fixture token 손실·충돌·맥락·revision·local-only 경계 확인. 실 tokenizer/학습 의존성 미검증. tempfile cleanup 제한 1회: 임시 생성이 필요 없는 누락 경로 fixture로 변경; 잔여 경로 없음 확인.
