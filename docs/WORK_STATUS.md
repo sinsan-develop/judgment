@@ -1,5 +1,20 @@
 # judgment 작업현황
 
+## 2026-10-14 승인된 A/B 동일 노출 비교 / 담당 어울
+
+- 직접 승인: B 선별280건/잠정정답49건을 이번 실험에 한해 사용, 원본 보존. A/B 동일 무학습 가중치·설정·697회 노출·AdamW88회. 순서/반복/원본ID/그룹 추적 고정. 검증·시험 자료 optimizer 비입력, final-test 다시 열지 않음. 효과는 선별·정답수정·반복노출의 합친 효과로 보고.
+- 현재 1단계 Windows 로컬, branch work/native-synthetic / 시작 SHA c79183a, clean 확인. 기존 branch와 승인된 Native 실행을 이어가며 새 branch·자료/모델 복제본을 만들지 않는다.
+- 실행 순서: 반복 입력/수정 범위/원본 추적/누출·final-test 접근차단 실패시험→최소 구현→필수 영향 회귀와 독립 리뷰1회→안전코드 checkpoint→A/B 순차 실제시험→calibration/selection 비교·보존·보고. 이미 완료된 수동검토와 과거 학습을 준비 검증으로 반복하지 않는다.
+- 계획 자원: ignored `.work/ab_comparison/`의 원본ID 순서표·arm별697입력·승인config·평가 집계, 기존 `.work/runs/`의 새 arm별 최종 모델·worker 증거. A/B 동시 학습0, arm별30분/RAM24GiB/전체GPU6GiB/전체 프로젝트disk30GiB, 전체최대60분. 수명은 이번 비교 동안, 최종 모델/추적/측정 증거는 보존하고 새 중복checkpoint만 동일hash 확인 후 정리. 기존 원본/모델/증거 변경0, 신규설치/다운로드/외부자원0.
+- 판단: 최신 직접 지시가 앞선 실험안의 test446 재평가를 대체한다. 평가 대상은 calibration457/selection374만, final-test는 loader 및 파일open guard로 차단. 과거 test 결과도 이번 비교에 새 결과로 인용하지 않는다.
+- 상태: 반복 입력 검증 구현 시작, 실제 학습 미실행. 새 오류0. 다음은 새 실패시험과 결정된 반복 목록 검증.
+- 반복 준비: A697고유×1회/67그룹, B280고유/62그룹(143개×2회+137개×3회). 양쪽697노출·업무558/없음139·예상88갱신. 원본ID/출처/그룹·JSONL순서·순환 횟수 고정, 원본과 선별 제안본 hash 보존. final-test/과거 mixed scores 열기0.
+- 새 TDD: 반복/입력변조/외부ID/gold범위/final-test 차단6개 RED→GREEN. 영향 회귀28개 PASS(러너·그룹경계·실제optimizer hook 포함), 마지막 failed JSON은 CLI 실패fixture의 예상출력이며 실제 학습실패가 아니다.
+- 독립 코드리뷰1회: Critical0/Important2/Minor0. upstream epoch shuffle로 JSONL 순서와 optimizer 소비순서가 다름을 발견하여 effective_schedule과 후보 순서·optimizer window·원본 occurrence를 추가, 실제 encode 소비를 관측/검증하는 hook을 연결했다. 전역deadline도 추가. 수정 후 신규9개 RED→GREEN, 재리뷰 없음. upstream 소스 변경0.
+- 시간 판정: 앞선 제안은 arm별30분/최대60분이었으나 최신 직접 지시의 '기존 자원 상한'을 보수적으로 적용해 전체 A/B·평가·집계에 단일1800초 deadline을 설정. 각 arm/worker에는 남은 시간만 전달한다. 학습 설정과697/88 조건은 변경하지 않는다.
+- 현재 변경: src/judgment/replay.py 신규, data.py의A/B test role 차단, runner.py의입력·실소비검증/접근guard, docs/run_ab_comparison.py, tests/test_replay.py, 이 기록. 원본/기존 모델/데이터·설치/credential 변화0. 다음은 수정 영향검사·안전checkpoint 뒤 실제 A/B 실행.
+- 실행 전 gate: 수정 후 영향회귀31 PASS, 새Python파일 AST 문법 PASS, 공개경로/Secret패턴6파일 safe=true/findings0 및수동content/diff검토 PASS, git diff --check PASS. 실제 GPU시험은 아직 미실행. 동일근본오류0, TDD 미구현 import 실패는 계획된RED와 구별한다. 새checkpoint에 데이터/모델/검토원문을 stage하지 않는다.
+
 ## 2026-10-14 학습 697건 의미 선별·동일 조건 실험안 / 담당 어울
 
 - 신산님 직접 요청: 기존 학습 697건만 검토해 명확한 정답/정말 후보 없음 선별, 복수·애매 사례는 삭제 없이 별도 보존, 정리 전후 수량과 원본/정리 학습 비교 실험안을 먼저 보고. 추가 학습은 보고 확인 이후.

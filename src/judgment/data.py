@@ -102,6 +102,8 @@ def load_real_bundle(config,*,roles):
     from pathlib import Path
     if not roles or any(role not in SPLITS for role in roles): raise ConfigError('split_role')
     c=config.values;parts={k:() for k in SPLITS}
+    if c.get('experiment',{}).get('kind') == 'ab_replay_v1' and 'test' in roles:
+        raise ConfigError('final_test_forbidden')
     mapping={k:k for k in ('example_id','source_id','conversation_id','duplicate_group','request','gold_id','tags')}
     for role in roles:
         raw=json.loads(Path(c['split_paths'][role]).read_text(encoding='utf-8'))

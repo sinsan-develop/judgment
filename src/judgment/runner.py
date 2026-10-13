@@ -209,6 +209,8 @@ def run_training(config, splits):
                             'train_rows':len(train),'selection_rows':len(selection),'data_kind':'synthetic',
                             'quality_status':'not_decided','gate':'G1_required'})
     preflight(config)
+    from .replay import validate_replay_files
+    replay_verified = validate_replay_files(config)
     c = config.values
     train, selection = training_rows(splits)
     for role in ('train','selection'):
@@ -256,6 +258,7 @@ def run_training(config, splits):
                   optimizer_updates_status='observed' if result.get('optimizer_updates_observed') is not None else 'unverified',memory_scope='sampled_peak',
                   vram_scope='device_total_upper_bound' if os.name=='nt' else 'process',cleanup='retained_local_only_pending_review')
     result.update(run_dir=str(run_dir),peak_ram_scope='parent_and_training_worker',disk_bytes_observed=_storage_bytes(config,run_dir))
+    if replay_verified is not None: result['replay_verified'] = replay_verified
     (run_dir/'evidence.json').write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8')
     try: result['disk_bytes_observed']=final_storage_check(config,run_dir)
     except ConfigError as e:
@@ -267,9 +270,12 @@ def run_training(config, splits):
 def training_worker(config_path):
     from .laya_adapter import LayaAdapter, offline
     c = RunConfig(json.loads(config_path.read_text(encoding='utf-8')))
+    from .replay import install_final_test_guard, validate_replay_files
+    final_test_guard = install_final_test_guard(c)
     preflight(c)
     c = validate_run_config(c.values,real=True)
     v = c.values; run_dir = config_path.parent
+    replay_verified = validate_replay_files(c, training_jsonl=run_dir/'train.jsonl')
     for role in ('train','selection'):
         if training_jsonl_digest(run_dir/(role+'.jsonl'))!=v['data_manifest']['file_digests'].get(role):
             raise ConfigError('data_digest_mismatch')
@@ -302,7 +308,13 @@ def training_worker(config_path):
         import torch
         if v['device'] == 'cuda': torch.cuda.empty_cache()
         if v['device']=='cuda': torch.cuda.reset_peak_memory_stats()
-        with observe_optimizer_steps() as observed:
+        from contextlib import nullcontext
+        from .replay import observe_replay_consumption
+        replay_context = nullcontext(None)
+        if replay_verified is not None:
+            replay_manifest = json.loads(Path(v['experiment']['files']['manifest']['path']).read_text(encoding='utf-8'))
+            replay_context = observe_replay_consumption(replay_manifest)
+        with observe_optimizer_steps() as observed, replay_context as replay_consumption:
             summary = adapter.finetune(run_dir/'train.jsonl',run_dir/'selection.jsonl',run_dir/'output',config=c)
         after = _tensor_manifest(run_dir/'output'/'model.safetensors')
         change = assess_weight_change(before,after)
@@ -330,6 +342,9 @@ def training_worker(config_path):
                       cuda_peak_allocated_bytes=torch.cuda.max_memory_allocated() if v['device']=='cuda' else 0,
                       cuda_peak_reserved_bytes=torch.cuda.max_memory_reserved() if v['device']=='cuda' else 0)
         result['expected_optimizer_updates']=expected_updates
+        if replay_verified is not None:
+            result.update(replay_verified=replay_verified, replay_consumption=replay_consumption,
+                          final_test_guard=final_test_guard)
         (run_dir/'summary.json').write_text(json.dumps(result),encoding='utf-8')
     return result
 
