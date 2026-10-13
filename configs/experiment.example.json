@@ -1,0 +1,16 @@
+{
+  "mode": "fixture",
+  "approval": null,
+  "canonical_checkout": null,
+  "model_dir": null,
+  "model_revision": null,
+  "source_commit": "c73908d96ff73c0062c340a11bf7c54ec7d8bc4d",
+  "code_revision": null,
+  "device": null,
+  "work_dir": null,
+  "resources": null,
+  "training": null,
+  "data_manifest": null,
+  "split_paths": null,
+  "seed": null
+}
