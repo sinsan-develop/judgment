@@ -96,3 +96,19 @@ def write_manifest(bundle, destination):
 def bundle_digest(part):
     content = '\n'.join(json.dumps(to_laya_row(e), sort_keys=True, ensure_ascii=False) for e in part)
     return hashlib.sha256(content.encode()).hexdigest()
+
+
+def load_real_bundle(config,*,roles):
+    from pathlib import Path
+    if not roles or any(role not in SPLITS for role in roles): raise ConfigError('split_role')
+    c=config.values;parts={k:() for k in SPLITS}
+    mapping={k:k for k in ('example_id','source_id','conversation_id','duplicate_group','request','gold_id','tags')}
+    for role in roles:
+        raw=json.loads(Path(c['split_paths'][role]).read_text(encoding='utf-8'))
+        if not isinstance(raw,list): raise ConfigError('data_mapping')
+        parts[role]=tuple(normalize_row(r,mapping) for r in raw)
+        if bundle_digest(parts[role])!=c['data_manifest']['file_digests'].get(role): raise ConfigError('data_digest_mismatch')
+    ownership={e.example_id:role for role,part in parts.items() for e in part}
+    for group in connected_groups(tuple(e for part in parts.values() for e in part)):
+        if len({ownership[e.example_id] for e in group})!=1: raise ConfigError('split_overlap')
+    return SplitBundle(parts,c['data_manifest'])

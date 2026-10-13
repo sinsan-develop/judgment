@@ -20,5 +20,5 @@ class RealAdapterTests(unittest.TestCase):
             elif mode == 'prefix':
                 for i, candidate in enumerate(p['candidates']): candidate['id']='공통접두부'*100+str(i)
             elif mode == 'context': p['context']=[dict(role='user',content='과거 맥락 '*1000)]
-            else: p['utterance']='[MASK]'
+            else: p['utterance']=a.backend.tok.mask_token
             with self.assertRaises(InputError): a.audit(validate_request(p))

@@ -87,3 +87,17 @@
 - 다음: ABI 수정안 실행 확인 후 동일 버전/고정 hash로 준비를 계속하고, CUDA·토큰·최소 표본 검사를 통과해야 승인된 첫 파이프라인 시험을 실행한다. 본 단계 결과를 학습 성공으로 표시하지 않는다.
 - 독립 리뷰 1회: Critical 0/Important 1/Minor 0. 기존 summary/pilot 파일 순차 덮어쓰기는 저장 실패 시 기존 증거를 훼손할 수 있다는 finding. RED→GREEN 기존 기록 비교 전용·내용 변경 시 거절·덮어쓰기 없음으로 1회 수정했고, 쓰기 불가 fixture에서 기존 bytes 보존을 확인했다. 다시 리뷰하지 않았다.
 - 수정 후 전체 suite: 57 실행/56 PASS/실제 로컬 모델 1 SKIP. 실제 모델 시험의 경로가 없어 skip된 것이며 G1 승인 자체가 없는 것은 아니다. 실제 ZIP 재실행도 성공, 원래 전체 group_map의 digest 보존 및 재분할 호출 없음 확인. 이 suite는 준비/상속 코드 회귀 증거이며 실제 학습 성공 증거가 아니다.
+
+## 2026-10-14 G1 실제 준비·토큰 gate 완료 / 담당 어울
+
+- 신산님이 동일 버전 abi3 wheel/hash 수정과 준비/시험 계속을 직접 승인했다. actual metadata와 lock을 맞추고 추가 6,694,745 bytes만 확보. 고정 38개 패키지 설치와 pip check PASS, Laya editable import의 exact source SHA/clean 확인. 글로벌 Python/패키지/드라이버 변경 없음.
+- 모델 고정 revision의 7개 파일을 LFS SHA-256/Git blob hash로 검증해 단일 로컬 cache에 준비했다. wheel+모델 신규 파일 수신 3,617,881,614 bytes, source Git object 저장 9,848,673 bytes(전송량 추정 기준, protocol overhead 제외), 5 GiB 한도 아래. 원본·변환 자료·가중치 외부 업로드 없음.
+- 실제 Python 3.14/PyTorch 2.10.0+cu128/Transformers 5.19.0/Laya import, CUDA device capability 12.0의 finite 행렬 연산 PASS. 실제 CPU 모델/tokenizer 구성·정상 5+기권·긴 후보·긴 맥락·실제 mask special token·동일 긴 접두부 충돌 거절 PASS. 실제 CPU 학습 없음.
+- 실제 WDDM process VRAM은 N/A였다. 6 GiB 제한을 완화하지 않고 전체 device 사용량 합계로 보수적 상한 감시하며 scope를 기록한다. parent+training worker RAM을 합산, 전체 .work+ZIP 실측 disk를 감시, 상한/감시 실패 시 해당 실행의 자식만 중단한다.
+- 실데이터 변환: 저장된 분할 anchor·원본/전체 mapping/pilot 기록 digest를 대조하고 동일 250그룹을 상속했다. 정상 gold 제외 파생 400개를 같은 출처/split에 생성. 토큰/주소 패턴 거절은 원본과 파생 쌍에 함께 적용. 21 원본 묶음/26 입력 제외(주소 패턴 15, token budget 11, 이유 중복 5) 후 1,974 입력 유지.
+- 실제 최종 split: train 697(양성558/기권139)/67그룹, calibration 457(365/92)/66, selection 374(299/75)/54, test 446(357/89)/63. 최소 사례·그룹·각 정답 유형·학습 MAIN 264종 gate PASS. 재분할/그룹 이동/추가 재추출 0. 개인정보 검사는 모든 retained request 필드의 명시 식별자 패턴 검사이며 모든 이름·의미상 개인정보의 완전한 증명이 아니다.
+- upstream dry-run PASS: train697/selection374 실제 item 수 일치, skipped/eval_skipped 0, 내부 calibration0, 예상 optimizer88. 실제 optimizer는 아직 시작하지 않았다.
+- 변경: 실제 변환 경계, actual train CLI/독립 파일 비접근 loader, worker JSONL digest, 실제 optimizer hook·인코더 tensor 불변·전체 저장 tensor reload 확인·완료 증거. fixture RED→GREEN 확인. Native suite 65 실행/64 PASS/actual config 없는 모델 1 SKIP; 실제 token 경계는 별도로 실제 모델에서 확인했다.
+- 독립 리뷰 1회: Critical0/Important2/Minor1. 최종 실측 disk 검사·upstream 행/optimizer 부분 실행 차단·CLI 실패 exit를 한 번 수정했다. 각 RED→GREEN 확인, 재리뷰 없음. 수정 후 전체 suite와 공개 파일 audit를 거쳐 clean code checkpoint를 먼저 보존한 뒤 단일 GPU 시험을 실행한다.
+- 오류/조치: 패키지 설치가 진행 중인 상태에서 source pip check를 먼저 실행해 일시 누락 1회, 설치 종료 후 정상 확인. Windows 기본 cp949로 UTF-8 로컬 요약 읽기 실패 1회, 명시 UTF-8로 수정 후 데이터 검사 완료. WDDM 감시 불가 1회는 위 보수적 device 상한으로 해결. 미해결 실행 오류 없음.
+- 다음: clean SHA/승인 scope·필수 gate를 대조하고 최대30분 전체 GPU trial에서 기본 모델 측정→헤드-only697행1epoch(88 optimizer 예상)→reload→같은 독립 test446행 비교. 온도는 calibration의 사전 grid만 사용, G2 임계값 선택/품질 합격 없음. 원문·출처/score/run/config/weight 증거는 ignored 로컬에만 보존한다.

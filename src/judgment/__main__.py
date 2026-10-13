@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from .contracts import ConfigError, InputError, ModelError, validate_run_config
 from .runner import preflight, run_training, load_fixture_bundle, training_worker, run_fixture_evaluation
+from .data import load_real_bundle
 
 
 def main():
@@ -13,7 +14,7 @@ def main():
     args = parser.parse_args()
     try:
         if args.command == '_train-worker':
-            training_worker(args.config); return 0
+            result=training_worker(args.config);return 0 if result.get('trained') else 2
         payload = json.loads(args.config.read_text(encoding='utf-8'))
         config = validate_run_config(payload,real=payload.get('mode') == 'real')
         if args.command == 'preflight': result = preflight(config).values
@@ -21,10 +22,13 @@ def main():
             bundle = load_fixture_bundle()
             result = (run_fixture_evaluation(bundle) if args.command == 'evaluate' else run_training(config,bundle)).values
         else:
-            # 실데이터 mapping·정책 sidecar·독립 평가 파일 계약은 G1에서 확인한다.
             preflight(config)
-            raise ConfigError('g1_real_mapping_and_policy_required')
-        print(json.dumps(result,ensure_ascii=False,indent=2)); return 0
+            if args.command=='train':
+                result=run_training(config,load_real_bundle(config,roles=('train','selection'))).values
+            else:
+                raise ConfigError('g2_policy_required_for_cli_evaluation')
+        print(json.dumps(result,ensure_ascii=False,indent=2))
+        return 2 if config.values['mode']=='real' and args.command=='train' and not result.get('trained') else 0
     except (ConfigError,InputError,ModelError) as e:
         print(json.dumps({'status':'blocked','code':e.code},ensure_ascii=False)); return 2
     except (OSError,ValueError,KeyError,TypeError):
