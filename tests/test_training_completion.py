@@ -6,6 +6,7 @@ from tests.test_data import examples
 from unittest.mock import patch
 from pathlib import Path
 import json
+import importlib.util
 
 
 class TrainingCompletionTests(unittest.TestCase):
@@ -15,6 +16,7 @@ class TrainingCompletionTests(unittest.TestCase):
             self.assertFalse(completed_training_evidence(changed,optimizer_updates=updates,reload_verified=reload,encoder_changed=encoder)['trained'])
         self.assertTrue(completed_training_evidence(changed,optimizer_updates=1,reload_verified=True,encoder_changed=0)['trained'])
 
+    @unittest.skipUnless(importlib.util.find_spec('torch'),'실제 optimizer hook 검사에는 PyTorch가 필요함')
     def test_actual_optimizer_steps_are_counted_independently_of_backward(self):
         import torch
         p=torch.nn.Parameter(torch.ones(2));optimizer=torch.optim.AdamW([p],lr=1e-4)

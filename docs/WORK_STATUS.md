@@ -101,3 +101,16 @@
 - 독립 리뷰 1회: Critical0/Important2/Minor1. 최종 실측 disk 검사·upstream 행/optimizer 부분 실행 차단·CLI 실패 exit를 한 번 수정했다. 각 RED→GREEN 확인, 재리뷰 없음. 수정 후 전체 suite와 공개 파일 audit를 거쳐 clean code checkpoint를 먼저 보존한 뒤 단일 GPU 시험을 실행한다.
 - 오류/조치: 패키지 설치가 진행 중인 상태에서 source pip check를 먼저 실행해 일시 누락 1회, 설치 종료 후 정상 확인. Windows 기본 cp949로 UTF-8 로컬 요약 읽기 실패 1회, 명시 UTF-8로 수정 후 데이터 검사 완료. WDDM 감시 불가 1회는 위 보수적 device 상한으로 해결. 미해결 실행 오류 없음.
 - 다음: clean SHA/승인 scope·필수 gate를 대조하고 최대30분 전체 GPU trial에서 기본 모델 측정→헤드-only697행1epoch(88 optimizer 예상)→reload→같은 독립 test446행 비교. 온도는 calibration의 사전 grid만 사용, G2 임계값 선택/품질 합격 없음. 원문·출처/score/run/config/weight 증거는 ignored 로컬에만 보존한다.
+
+## 2026-10-14 G1 최초 실제 학습 파이프라인 검증 완료 / 담당 어울
+
+- 실행 SHA `78068da517cd28adcdf9d26631e60372f4b296fc`를 push/원격 일치·clean 확인 후 승인 scope에 결합했다. Windows local-only 단일 GPU trial에서 기준 모델 측정→697행 헤드-only1epoch→tensor/reload→동일 test446개 비교, 정상 exit0. 250그룹은 원래 전체 분할을 상속했고 실제 모든 사례의 원본 주소·group/split·입력 digest를 재대조해 이동0 확인했다.
+- 실제 증거 PASS: train697/selection374/upstream skip0, 내부 calibration0, AdamW 예상88/관측88, 변경 tensor32/encoder변경0, 전체 저장 tensor와 reload tensor 일치·reload score 확인, epoch mean loss1.89582656. 실제 기본/학습 후 파일 SHA를 직접 재계산해 기록과 대조했다. 데이터·가중치·source 식별 digest 상세는 로컬 전용 증거에만 기록한다.
+- 측정: test446/63연결 그룹 top-1 21.30%→21.30%, 정답 포함 후보 선택5.04%→5.88%, 보정 NLL1.80770→1.78165, ECE0.08401→0.02745, coverage14.13%→16.82%, 선택 응답 오류71.43%→72.00%. 확률 지표 일부 개선을 한국어 정확도/운영 품질 합격으로 표시하지 않는다. G2 기준과 임계값 선택 미결정, explicit-only 측정이다. 빈 태그 slice는 MODEL_CARD에 명시했다.
+- 자원: 전체 trial 최종 phase elapsed256.38초, RAM(parent+worker 샘플)2.05GiB, 전체 device VRAM 상한 샘플5.36GiB, CUDA 할당/예약 피크2.81/5.02GiB, 정리 전 disk9.26GiB. 시간1800초/RAM24/VRAM6/disk30GiB 상한 내 관측·최종 검사 PASS. process VRAM N/A는 device 전체 상한으로 보수적으로 측정한 범위임을 명시했다. 외부 유료 자원 없음.
+- 검증: 최종 수정 Native suite68 실행/67 PASS/실모델1 SKIP 뒤 그 실제 모델 시험1개를 처음 실행하여 PASS(2+기권 shape, 긴/접두부/맥락/special 거절). 저장된 상속 manifest·입력4파일·source/reloaded weight·tensor 변경·optimizer 관측·한도를 독립 대조 PASS. 학습 실패 없음. 리뷰 finding은 1회 수정으로 해결, 재리뷰 없음.
+- 기본 표준 라이브러리 경로 회귀를 보존하기 위해 XLSX import를 실제 ingest 시점으로 늦추고 실제 optimizer 시험은 torch 있는 환경에서만 실행하게 했다. 기본 Native68 중66 PASS/선택 의존성2 SKIP, 전용 환경의 상속/hook7 PASS 확인. 실제 학습을 재실행하지 않았다.
+- 정리: 최신 중간 checkpoint7개 파일이 최종본과 모두 동일한 hash임을 검증하고 절대 target 경계를 확인한 뒤 중복 latest만 제거했다. 이번 준비의 비호환 wheel2개도 제거. 원본 ZIP·최종 모델1개·base cache1곳·고정 source·모든 실행/분할/측정/자원 증거 보존. 정리 후 disk8.62GiB, 종료 후 GPU점유0 확인.
+- 보존 문서: MODEL_CARD 실제 결과로 갱신, README/UPSTREAM 현재 실행 계약 반영, 환경/G1 원문에 비공개 상세 추가. 코드/집계 문서만 최종 checkpoint push하고 실제 원격 SHA를 보고한다. 모델/데이터 공개·main 병합·force push·WSL/Oracle 배포 없음.
+- 완료: 승인된 Windows 준비, exact 의존성/모델, 전체 분할 상속·그룹별 기록, 실제 토큰/표본 gate, 최초1epoch헤드 학습·갱신·reload·독립측정·자원검증·중복 정리. 미완료: G2 정책/품질 판정, 추가 한국어 학습·인코더 학습·정밀한 한국어 유형/후보10·20/공공민원 평가, 의미/개인정보 전체 증명, 다른 환경·운영·G3 공개/배포.
+- 다음: 결과를 신산님께 보고한다. 추가 학습을 자동 실행하지 않으며 이미 노출된 test를 향후 튜닝 후 새 미사용 검증으로 재사용하지 않는다. 추가 범위/품질 기준은 별도 승인 후 진행한다.

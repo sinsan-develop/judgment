@@ -16,8 +16,6 @@ import unicodedata
 import warnings
 import zipfile
 
-import openpyxl
-
 SCHEMA_VERSION = 'aihub116-review-v2-inherited-pilot'
 SPLITS = ('train', 'calibration', 'selection', 'test')
 RATIOS = (.7, .1, .1, .1)
@@ -59,6 +57,7 @@ class UnionFind:
 
 
 def ingest(archive):
+    import openpyxl  # 실제 XLSX 판독 때만 필요하다. 합성 그룹 시험은 표준 라이브러리만 사용.
     all_rows, profiles = [], []
     with zipfile.ZipFile(archive) as z:
         if z.testzip() is not None: raise ValueError('crc_failure')

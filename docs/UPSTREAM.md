@@ -10,4 +10,4 @@
 
 실제 로딩은 로컬 encoder/tokenizer/model/config와 모델 provenance를 요구한다. upstream checkout의 HEAD와 tracked dirty 상태를 검사한다. wheel만 있고 source 증거가 없으면 실행을 차단한다. HF/Transformers offline과 local_files_only를 사용한다.
 
-현재 fake tokenizer/backend 시험만 수행했다. 실제 tokenizer·raw logit shape·PyTorch 호환성은 G1 이후 검사 전까지 미검증이다. upstream 소스·가중치 자체는 이 저장소에 복제하지 않는다.
+2026-10-14 승인된 Windows 전용 환경에서 실제 tokenizer·raw logits(2+기권, 최초 자료 5+기권)·CUDA·고정 학습 파서·헤드-only1epoch·optimizer88회·encoder 불변·전체 tensor reload를 확인했다. 10/20 업무 후보의 실제 성능과 다른 환경 호환성은 미검증이다. 학습은 fp32/amp=False였고 고정 upstream은 checkpoint를 fp16으로 저장한다. 실제 모델·의존성·소스 cache와 실행 증거는 로컬 ignored 영역에만 유지한다.
