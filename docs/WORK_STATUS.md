@@ -9,6 +9,8 @@
 - 조건유지: A/B 동일초기·동일Linux환경/설정·697/88·fp32·final-test비접근·원본보존. 전체1800초/RAM24/GPU6/projectdisk30GiB,준비5GiB상한. 큰런타임이미지신규다운로드없이읽기전용재사용. Linux의존성/저장범위/GPU감시검증후학습. 다음은checkout·전용환경·GPUgate.
 - GPU 최소 fp32 연산 PASS. HIP free-memory는 다른process 점유를 안정적으로 반영하지 못해 전체 감시로 채택하지 않았다. GPU context를 만들지 않는 Windows adapter의 resident/committed 중 큰 값을 adapter별 합산해 보수적 상한을 읽고, stale/형식/경로/승인binding 실패 시 중단한다.
 - 독립 portability 리뷰1회 Critical0/Important2/Minor1: 승인config와환경변수 양방향binding, 전용venv/Python/Torch 버전 사전검증, 공유runtime이미지 점유량의 음수/bool/비정수 거절을 1회 보완. 새 경계 RED→GREEN 및 영향회귀38 PASS, 재리뷰 없음. suite 순서상 optimizer 시험이 먼저torch를 import하여 import-only 시험1회 실패했고 import 시험을 먼저실행해 실제 회귀없음 확인. 실제 A/B 미실행.
+- 전송은 자동승인검토에서 구체적 payload/destination 명시승인 부족으로거절. 18파일/684MB allowlist 묶음은 Windows ignored 로컬에준비했으나 PCWSL userdata/model 전송0. exactSHA 원격source/upstream, 전용venv·패키지준비·context없는GPU감시는 계속하며 원본/시험 자료는 열지않는다. 사용자에게 정확한 묶음/경로/목적/보존범위 승인을 요청해야 학습진행가능.
+- 준비오류: 이미지Torch는 basePython이아닌 /opt/venv에있어 projectvenv 상속실패1회. 읽기전용 site-packages 경로를 ownvenv .pth에연결해해결. setuptools wheel의vendored METADATA까지세어무결성검사가거절1회, wheel최상위distribution metadata만사용하도록 RED→GREEN2 PASS. 고정버전/hash검증은유지하며 글로벌패키지변경0.
 
 ## 2026-10-14 승인된 A/B 동일 노출 비교 / 담당 어울
 

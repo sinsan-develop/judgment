@@ -27,6 +27,12 @@ def verify_runtime():
         raise ValueError('runtime_version')
 
 
+def wheel_metadata(archive):
+    names = [n for n in archive.namelist() if n.count('/') == 1 and n.endswith('.dist-info/METADATA')]
+    if len(names) != 1: raise ValueError('wheel_metadata')
+    return email.message_from_bytes(archive.read(names[0]))
+
+
 def run():
     verify_runtime()
     FOLDER.mkdir(exist_ok=True); WHEELS.mkdir(exist_ok=True)
@@ -42,9 +48,7 @@ def run():
     requested = {re.sub(r'[-_.]+', '-', name).lower(): (name, version) for name, version in rows}
     for wheel in sorted(WHEELS.glob('*.whl')):
         with zipfile.ZipFile(wheel) as archive:
-            names = [n for n in archive.namelist() if n.endswith('.dist-info/METADATA')]
-            if len(names) != 1: raise ValueError('wheel_metadata')
-            meta = email.message_from_bytes(archive.read(names[0]))
+            meta = wheel_metadata(archive)
         normalized = re.sub(r'[-_.]+', '-', meta['Name']).lower()
         if normalized not in requested or normalized in seen: raise ValueError('wheel_package_coverage')
         seen.add(normalized)

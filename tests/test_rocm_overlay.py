@@ -9,6 +9,16 @@ spec.loader.exec_module(overlay)
 
 
 class OverlayBoundaryTests(unittest.TestCase):
+    def test_wheel_metadata_ignores_nested_vendored_distributions(self):
+        class Wheel:
+            def namelist(self):
+                return ['setuptools-84.0.0.dist-info/METADATA', 'setuptools/_vendor/other.dist-info/METADATA']
+            def read(self, name):
+                if name != 'setuptools-84.0.0.dist-info/METADATA': raise AssertionError('vendored metadata')
+                return b'Name: setuptools\nVersion: 84.0.0\n'
+        result = overlay.wheel_metadata(Wheel())
+        self.assertEqual(result['Name'], 'setuptools')
+
     def test_wrong_venv_or_runtime_cannot_install_or_create_files(self):
         expected = str(overlay.ROOT / '.work/venv')
         cases = [(expected, expected, (3, 12, 3), '2.13.0+rocm7.2'),
