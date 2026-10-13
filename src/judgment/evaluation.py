@@ -111,3 +111,63 @@ def compare_stability(pairs, policy, *, id_maps):
         if db.selected_id is not None and db.selected_id not in mapping: raise ConfigError('id_mapping')
         stable += da.selected_id == (mapping[db.selected_id] if db.selected_id is not None else None)
     return Report({'n':len(pairs),'stable_rate':stable/len(pairs) if pairs else None})
+
+
+def benchmark(adapter, requests, *, config):
+    import time
+    if not isinstance(config,dict) or any(config.get(k) is None for k in ('device','repeats','warmup','synchronize','memory_sample')):
+        raise ConfigError('benchmark_config')
+    repeats = positive(config['repeats'],'repeats',integer=True)
+    warmup = positive(config['warmup'],'warmup',integer=True)
+    if not callable(config['synchronize']) or not callable(config['memory_sample']): raise ConfigError('benchmark_hooks')
+    if not requests: raise ConfigError('empty_benchmark')
+    peak_ram = peak_vram = 0
+    def measure(request):
+        nonlocal peak_ram,peak_vram
+        config['synchronize'](); start = time.perf_counter()
+        adapter.score(request); config['synchronize']()
+        elapsed = time.perf_counter()-start
+        memory = config['memory_sample']()
+        for key in ('ram_bytes','vram_bytes'):
+            if key not in memory or not isinstance(memory[key],int) or memory[key] < 0: raise ConfigError('memory_sample')
+        peak_ram,peak_vram = max(peak_ram,memory['ram_bytes']),max(peak_vram,memory['vram_bytes'])
+        return elapsed
+    cold = [measure(requests[0])]
+    for i in range(warmup): measure(requests[i%len(requests)])
+    warm = [measure(requests[i%len(requests)]) for i in range(repeats)]
+    def summary(values): return {'n':len(values),'p50_seconds':_quantile(values,.5),'p95_seconds':_quantile(values,.95)}
+    return Report({'device':config['device'],'cold':summary(cold),'warm':summary(warm),'warmup':warmup,
+                   'peak_ram_bytes':peak_ram,'peak_vram_bytes':peak_vram,'cold_scope':'first_inference_after_adapter_load',
+                   'memory_scope':'sampled_after_each_call','model_revision':adapter.backend.model_revision})
+
+
+def audit_public_files(paths):
+    from pathlib import Path
+    import re
+    import os
+    findings = []
+    forbidden_parts = {'data','models','cache','checkpoints','.work','.env','.ssh'}
+    forbidden_names = {'questions.json','train_report.json','development_environment.md','judgment-design-draft.md','judgment-implementation-plan.md','agents.md'}
+    for path in paths:
+        p = Path(os.path.abspath(path))
+        # lexical 경계부터 검사한다. 일부 sandbox의 realpath는 '..'를 잘못 해석할 수 있다.
+        try: p = p.relative_to(Path(os.path.abspath(Path.cwd())))
+        except ValueError: findings.append({'code':'outside_repository'}); continue
+        if any(parent.is_symlink() or (hasattr(parent,'is_junction') and parent.is_junction()) for parent in [p]+list(p.parents)[:-1]):
+            findings.append({'path':p.as_posix(),'code':'unreviewed_link'}); continue
+        parts = {x.lower() for x in p.parts}
+        private = bool(parts & forbidden_parts) or p.name.lower() in forbidden_names or p.name.startswith('.env')
+        private |= p.suffix.lower() in ('.safetensors','.pt','.pth','.pem','.key','.ckpt','.bin')
+        private |= p.suffix.lower() == '.jsonl' and p.as_posix() != 'tests/fixtures/synthetic_ko.jsonl'
+        if private:
+            findings.append({'path':p.as_posix(),'code':'private_artifact'}); continue
+        if not p.is_file():
+            findings.append({'path':p.as_posix(),'code':'missing_or_nonfile'}); continue
+        if p.is_file():
+            if p.stat().st_size > 2_000_000: findings.append({'path':p.as_posix(),'code':'large_unreviewed_file'}); continue
+            try: content = p.read_text(encoding='utf-8-sig')
+            except (UnicodeError,OSError): findings.append({'path':p.as_posix(),'code':'unreviewed_binary'}); continue
+            if re.search(r'-----BEGIN (?:RSA |OPENSSH |EC )?PRIVATE KEY-----|\bgh[pousr]_[A-Za-z0-9]{20,}|\bAKIA[A-Z0-9]{16}',content):
+                findings.append({'path':p.as_posix(),'code':'secret_pattern'})
+    return Report({'safe':not findings,'findings':findings,'scope':'path_and_secret_patterns',
+                   'raw_text_review':'manual_staged_diff_required','files':len(paths)})

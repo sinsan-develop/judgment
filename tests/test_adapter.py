@@ -1,4 +1,6 @@
 import unittest
+import types
+import sys
 from pathlib import Path
 from unittest.mock import patch
 from judgment.contracts import InputError, ConfigError, SOURCE_COMMIT, validate_request
@@ -40,3 +42,40 @@ class AdapterTests(unittest.TestCase):
         self.assertIn('"role": "system"', r['state'])
         self.assertIn('"current_utterance"', r['state'])
         self.assertEqual(r['question']['instructions'], p['question'])
+
+    def test_pinned_question_encoder_returns_list_not_mapping(self):
+        from judgment.laya_adapter import _LocalBackend
+        b = object.__new__(_LocalBackend)
+        b.source_commit=SOURCE_COMMIT; b.model_revision='fixture'; b.head_limit=10000; b.total_limit=20000
+        b.tok = types.SimpleNamespace(all_special_tokens=[])
+        encode = lambda text: list(map(ord,text))
+        options = lambda q: [k+': '+v for k,v in q['crit'].items()]
+        def build_head(tok,q,limit):
+            ids = [1]+encode('choice question: '+q['ins'])+[2]; markers=[]
+            for option in options(q): markers.append(len(ids)); ids += [3]+encode(' '+option)
+            return ids+[2],markers,{}
+        def build_sequence(tok,state,q,*limits,**kwargs):
+            head,markers,stats=build_head(tok,q,0)
+            return head+encode(state)+[2],markers,stats,{'truncated':False}
+        b.common=types.SimpleNamespace(_encode_question_text=lambda tok,s,**kw:encode(s),
+            encode_text=lambda tok,s,**kw:{'input_ids':encode(s)},render_options=options,
+            serialize_state=lambda s:s,build_head=build_head,build_sequence=build_sequence)
+        b.Agent=types.SimpleNamespace(_to_internal=lambda q:{'t':'choice','ins':q['instructions'],'crit':q['criteria']})
+        self.assertTrue(LayaAdapter.from_backend(b).audit(validate_request(payload())).complete)
+
+    def test_finetune_emits_pinned_config_to_actual_boundary(self):
+        from judgment.laya_adapter import _LocalBackend
+        from judgment.contracts import RunConfig
+        from unittest.mock import Mock
+        b=object.__new__(_LocalBackend); b.source_commit=SOURCE_COMMIT; b.model_dir=Path('local-model')
+        adapter=LayaAdapter.from_backend(b)
+        c=RunConfig({'training':dict(epochs=1,micro_batch=1,grad_accum=1,encoder_lr=1e-5,head_lr=1e-4,freeze_encoder=True,precision='fp32'), 'seed':7,'device':'cpu'})
+        train=types.ModuleType('laya.train'); train.TrainConfig=lambda **kw:kw; train.finetune=Mock(return_value={'fixture':True})
+        with patch.dict(sys.modules,{'laya':types.ModuleType('laya'),'laya.train':train}), patch('judgment.contracts.validate_run_config',return_value=c):
+            adapter.finetune(Path('train.jsonl'),Path('selection.jsonl'),Path('output'),config=c)
+        args=train.finetune.call_args
+        self.assertEqual(args.args[:2],('train.jsonl','local-model'))
+        self.assertEqual(args.kwargs['config']['eval_data'],'selection.jsonl')
+        self.assertEqual(args.kwargs['config']['calib_frac'],0)
+        self.assertEqual(args.kwargs['config']['calib_max'],0)
+        self.assertEqual(args.kwargs['config']['shuffle_options'],('choice',))

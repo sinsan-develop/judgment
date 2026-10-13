@@ -119,8 +119,8 @@ class _LocalBackend:
         texts = [rendered['question']['instructions'], rendered['state']] + c.render_options(q)
         if any(s and any(token in s for token in tok.all_special_tokens) for s in texts):
             raise InputError('special_token_loss')
-        full_options = [tuple(c._encode_question_text(tok, ' ' + s, add_special_tokens=False)['input_ids']) for s in c.render_options(q)]
-        full_head = tuple(c._encode_question_text(tok, 'choice question: ' + q['ins'], add_special_tokens=False)['input_ids'])
+        full_options = [tuple(c._encode_question_text(tok, ' ' + s, add_special_tokens=False)) for s in c.render_options(q)]
+        full_head = tuple(c._encode_question_text(tok, 'choice question: ' + q['ins'], add_special_tokens=False))
         head, hm, _ = c.build_head(tok, q, self.head_limit)
         actual_options = [tuple(head[a+1:b]) for a, b in zip(hm, hm[1:] + [len(head)-1])]
         actual_head = tuple(head[1:hm[0]-1])

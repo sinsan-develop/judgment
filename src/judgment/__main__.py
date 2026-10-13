@@ -3,7 +3,7 @@ import argparse
 import json
 from pathlib import Path
 from .contracts import ConfigError, InputError, ModelError, validate_run_config
-from .runner import preflight, run_training, load_fixture_bundle, training_worker
+from .runner import preflight, run_training, load_fixture_bundle, training_worker, run_fixture_evaluation
 
 
 def main():
@@ -18,8 +18,8 @@ def main():
         config = validate_run_config(payload,real=payload.get('mode') == 'real')
         if args.command == 'preflight': result = preflight(config).values
         elif config.values['mode'] == 'fixture':
-            result = run_training(config,load_fixture_bundle()).values
-            if args.command == 'evaluate': result.update(status='fixture_contract_only',real_evaluation=False)
+            bundle = load_fixture_bundle()
+            result = (run_fixture_evaluation(bundle) if args.command == 'evaluate' else run_training(config,bundle)).values
         else:
             # 실데이터 mapping·정책 sidecar·독립 평가 파일 계약은 G1에서 확인한다.
             preflight(config)

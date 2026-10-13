@@ -19,6 +19,10 @@ def resource_budget(resources, *, free_bytes):
     return required
 
 
+def final_resource_check(resources, *, artifact_bytes):
+    if artifact_bytes+resources['estimated_disk_bytes'] > resources['disk_limit_bytes']: raise ConfigError('disk_limit')
+
+
 def preflight(config):
     if config.values.get('mode') == 'fixture':
         return Report({'mode':'fixture','training_allowed':False,'download_allowed':False,'gate':'G1_required',
@@ -32,6 +36,11 @@ def preflight(config):
         head = subprocess.check_output(['git','rev-parse','HEAD'], text=True, stderr=subprocess.DEVNULL).strip()
     except (OSError, subprocess.CalledProcessError): raise ConfigError('code_revision') from None
     if c['code_revision'] != head: raise ConfigError('code_revision')
+    dirty = subprocess.check_output(['git','status','--porcelain','--untracked-files=no'],text=True,stderr=subprocess.DEVNULL)
+    if dirty.strip(): raise ConfigError('dirty_checkout')
+    loaded_source = Path(os.path.abspath(__file__))
+    expected_source = Path(os.path.abspath(c['canonical_checkout']))/'src'/'judgment'/'runner.py'
+    if loaded_source != expected_source: raise ConfigError('noncanonical_import')
     model_dir, work_dir = Path(c['model_dir']).resolve(), Path(c['work_dir']).resolve()
     if not model_dir.is_dir() or not work_dir.is_dir(): raise ConfigError('missing_local_resource')
     if work_dir == model_dir or model_dir in work_dir.parents or work_dir in model_dir.parents: raise ConfigError('storage_overlap')
@@ -95,11 +104,16 @@ def _memory(pid):
                       ('PeakWorkingSetSize','WorkingSetSize','QuotaPeakPagedPoolUsage','QuotaPagedPoolUsage','QuotaPeakNonPagedPoolUsage','QuotaNonPagedPoolUsage','PagefileUsage','PeakPagefileUsage')]
         api = ctypes.WinDLL('kernel32',use_last_error=True)
         api.OpenProcess.restype = wintypes.HANDLE
+        api.OpenProcess.argtypes = [wintypes.DWORD,wintypes.BOOL,wintypes.DWORD]
+        api.CloseHandle.argtypes = [wintypes.HANDLE]
+        memory_api = ctypes.WinDLL('psapi')
+        memory_api.GetProcessMemoryInfo.argtypes = [wintypes.HANDLE,ctypes.POINTER(Counters),wintypes.DWORD]
+        memory_api.GetProcessMemoryInfo.restype = wintypes.BOOL
         handle = api.OpenProcess(0x1000|0x10,False,pid)
         if not handle: raise ConfigError('memory_monitor_unavailable')
         try:
             c = Counters(); c.cb = ctypes.sizeof(c)
-            ok = ctypes.WinDLL('psapi').GetProcessMemoryInfo(handle,ctypes.byref(c),c.cb)
+            ok = memory_api.GetProcessMemoryInfo(handle,ctypes.byref(c),c.cb)
             if not ok: raise ConfigError('memory_monitor_unavailable')
             return c.WorkingSetSize
         finally: api.CloseHandle(handle)
@@ -138,7 +152,8 @@ def run_training(config, splits):
         (run_dir/(role+'.jsonl')).write_text('\n'.join(json.dumps(r,ensure_ascii=False) for r in rows)+'\n',encoding='utf-8')
     (run_dir/'config.json').write_text(json.dumps(c,ensure_ascii=False),encoding='utf-8')
     cmd = [sys.executable,'-m','judgment','_train-worker','--config',str(run_dir/'config.json')]
-    env = dict(os.environ,HF_HUB_OFFLINE='1',TRANSFORMERS_OFFLINE='1',TOKENIZERS_PARALLELISM='false')
+    env = dict(os.environ,HF_HUB_OFFLINE='1',TRANSFORMERS_OFFLINE='1',TOKENIZERS_PARALLELISM='false',
+               PYTHONPATH=str(Path(c['canonical_checkout'])/'src'))
     start = time.monotonic(); peak_ram = peak_vram = 0; failure = None
     proc = subprocess.Popen(cmd,env=env,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
     try:
@@ -158,21 +173,25 @@ def run_training(config, splits):
         try: proc.wait(timeout=10)
         except subprocess.TimeoutExpired: proc.kill(); proc.wait()
     summary_path = run_dir/'summary.json'
+    try: final_resource_check(c['resources'],artifact_bytes=sum(p.stat().st_size for p in run_dir.rglob('*') if p.is_file()))
+    except ConfigError as e: failure = e.code
     result = json.loads(summary_path.read_text(encoding='utf-8')) if summary_path.exists() else {'trained':False}
     if failure or proc.returncode != 0: result = {'trained':False,'status':'failed','reason':failure or 'worker_failed'}
     result.update(peak_ram_bytes=peak_ram,peak_vram_bytes=peak_vram,elapsed_seconds=time.monotonic()-start,
                   code_revision=c['code_revision'],source_commit=c['source_commit'],model_revision=c['model_revision'],seed=c['seed'],
                   training_scope='head_only' if c['training']['freeze_encoder'] else 'encoder_and_head',
-                  optimizer_updates_observed=None, optimizer_updates_status='unverified',cleanup='retained_local_only_pending_review')
+                  optimizer_updates_observed=None, optimizer_updates_status='unverified',memory_scope='sampled_peak',cleanup='retained_local_only_pending_review')
     (run_dir/'evidence.json').write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8')
     return RunEvidence(result)
 
 
 def training_worker(config_path):
     from .laya_adapter import LayaAdapter, offline
-    c = validate_run_config(json.loads(config_path.read_text(encoding='utf-8')),real=True)
+    c = RunConfig(json.loads(config_path.read_text(encoding='utf-8')))
+    preflight(c)
+    c = validate_run_config(c.values,real=True)
     v = c.values; run_dir = config_path.parent
-    with offline():
+    with _worker_limits(c,run_dir), offline():
         adapter = LayaAdapter.from_local(Path(v['model_dir']),source_commit=v['source_commit'],model_revision=v['model_revision'],device=v['device'])
         # 실제 tokenize 검사를 모든 학습/selection 행에 수행한 후에만 optimizer로 전달한다.
         from .contracts import validate_request
@@ -205,3 +224,55 @@ def load_fixture_bundle():
     rows = [json.loads(line) for line in path.read_text(encoding='utf-8').splitlines()]
     mapping = {k:k for k in ('example_id','source_id','conversation_id','duplicate_group','request','gold_id','tags')}
     return split_groups(tuple(normalize_row(r,mapping) for r in rows),ratios=dict(train=.4,calibration=.2,selection=.2,test=.2),seed=13)
+
+
+def run_fixture_evaluation(splits):
+    from .contracts import Scores,ScoredExample,TokenAudit,ABSTAIN_ID
+    from .policy import fit_temperatures,select_policy,scored_digest
+    from .evaluation import evaluate
+    source = Path(__file__).resolve().parents[2]/'tests'/'fixtures'/'synthetic_scores.json'
+    logits = json.loads(source.read_text(encoding='utf-8'))
+    scored = {}
+    labels = {ABSTAIN_ID}
+    for role, examples in splits.parts.items():
+        rows = []
+        for e in examples:
+            ids = tuple(c.id for c in e.request.candidates)+(ABSTAIN_ID,)
+            labels.update(ids)
+            audit = TokenAudit(0,0,10000,20000,len(ids)-1,len(ids),True)
+            rows.append(ScoredExample(e,Scores(ids,tuple(logits[e.example_id]),'synthetic-predeclared-logits',audit),role))
+        scored[role] = tuple(rows)
+    temperatures = fit_temperatures(scored['calibration'],config=dict(temperature_min=.5,temperature_max=2.,steps=7,min_samples=1))
+    policy = select_policy(scored['selection'],temperatures,criteria=dict(version='synthetic-only-v1',calibration_digest=scored_digest(scored['calibration']),
+                           max_error=1.,min_coverage=0.,min_samples=1,probability_grid=[0.,.5],margin_grid=[0.,.1]))
+    r = evaluate(scored['test'],policy,config=dict(labels=sorted(labels),ece_bins=5,seed=13,bootstrap_repeats=20,
+                 confidence_level=.95,min_groups=4,counts=[2,5,10,20],tags=['context','negation','correction','honorific','typo','spacing','mixed','indirect','multi_intent','no_answer'])).values
+    r.update(status='fixture_evaluation',trained=False,real_evaluation=False,data_kind='synthetic',
+             score_source='predeclared_fixture_logits',tokenizer_verified=False,gate='G1_required',policy_version=policy.version)
+    return Report(r)
+
+
+from contextlib import contextmanager
+
+
+@contextmanager
+def _worker_limits(config,run_dir):
+    # worker 직접 실행에서도 동일 제한을 적용한다. monitor 없이 optimizer를 실행하지 않는다.
+    import threading
+    stop = threading.Event(); c = config.values; start = time.monotonic()
+    def watch():
+        while not stop.wait(.2):
+            try:
+                over = time.monotonic()-start > c['resources']['time_limit_seconds']
+                over |= _memory(os.getpid()) > c['resources']['ram_limit_bytes']
+                if c['device'] == 'cuda': over |= _gpu_memory(os.getpid()) > c['resources']['vram_limit_bytes']
+                disk = sum(p.stat().st_size for p in run_dir.rglob('*') if p.is_file())
+                over |= disk+c['resources']['estimated_disk_bytes'] > c['resources']['disk_limit_bytes']
+                if over: os._exit(3)
+            except (ConfigError,OSError): os._exit(3)
+    # 시작 전에 monitor 가용성을 확인한다.
+    _memory(os.getpid())
+    if c['device'] == 'cuda': _gpu_memory(os.getpid())
+    thread = threading.Thread(target=watch,daemon=True); thread.start()
+    try: yield
+    finally: stop.set(); thread.join(timeout=2)
