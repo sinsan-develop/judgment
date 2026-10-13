@@ -1,5 +1,15 @@
 # judgment 작업현황
 
+## 2026-10-14 PCWSL 이전 착수 / 담당 어울
+
+- 직접 지시 '그럼 그기서 작업해'에 따라 PCWSL을 새 개발·A/B 실행 대상으로 승인. 기존 사용자 원본과 Windows 실패 증거는 보존하며 작업branch exactSHA를 Git으로 원격checkout한다. Windows 소스 archive 복사는 하지 않는다.
+- 확인: SSH/WSL2/Python3.12/AMD RX7800XT 호스트/ROCm7.2.4 경로 및 /dev/dxg. 기존이미지 Torch2.13.0+rocm7.2/Transformers4.57.6/safetensors0.8.0. judgment 호환성과GPU연산은미검증. legacy rocm-smi 실패만으로GPU불가로단정하지않는다.
+- 자원: 기존 fish-speech RAM18GiB,host가용약1.6GiB. 공유서비스중지/변경0. 우리별도container에서기존immutable ROCm이미지를재사용하고프로젝트만mount한다. GPU장치와ROCDXG/dxcore라이브러리읽기전용연결,타프로젝트모델/volume/port공유없음. container는준비·시험후삭제,프로젝트입력/모델/증거는ignored .work에단일보존.
+- 이전payload: 원본train697/선별280/검토표·고정A/B 순서·calibration457/selection374·고정무학습모델/필요승인metadata만PCWSL사용자전용프로젝트로이전. raw ZIP/final-test/과거mixed scores/Windows venv·wheel·credential/이전학습모델전송0. 소스는Git exactSHA,데이터/모델Git업로드0.
+- 조건유지: A/B 동일초기·동일Linux환경/설정·697/88·fp32·final-test비접근·원본보존. 전체1800초/RAM24/GPU6/projectdisk30GiB,준비5GiB상한. 큰런타임이미지신규다운로드없이읽기전용재사용. Linux의존성/저장범위/GPU감시검증후학습. 다음은checkout·전용환경·GPUgate.
+- GPU 최소 fp32 연산 PASS. HIP free-memory는 다른process 점유를 안정적으로 반영하지 못해 전체 감시로 채택하지 않았다. GPU context를 만들지 않는 Windows adapter의 resident/committed 중 큰 값을 adapter별 합산해 보수적 상한을 읽고, stale/형식/경로/승인binding 실패 시 중단한다.
+- 독립 portability 리뷰1회 Critical0/Important2/Minor1: 승인config와환경변수 양방향binding, 전용venv/Python/Torch 버전 사전검증, 공유runtime이미지 점유량의 음수/bool/비정수 거절을 1회 보완. 새 경계 RED→GREEN 및 영향회귀38 PASS, 재리뷰 없음. suite 순서상 optimizer 시험이 먼저torch를 import하여 import-only 시험1회 실패했고 import 시험을 먼저실행해 실제 회귀없음 확인. 실제 A/B 미실행.
+
 ## 2026-10-14 승인된 A/B 동일 노출 비교 / 담당 어울
 
 - 직접 승인: B 선별280건/잠정정답49건을 이번 실험에 한해 사용, 원본 보존. A/B 동일 무학습 가중치·설정·697회 노출·AdamW88회. 순서/반복/원본ID/그룹 추적 고정. 검증·시험 자료 optimizer 비입력, final-test 다시 열지 않음. 효과는 선별·정답수정·반복노출의 합친 효과로 보고.

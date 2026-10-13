@@ -34,6 +34,9 @@ def preflight(config):
     bound = {k:v for k,v in c.items() if k != 'approval'}
     digest = hashlib.sha256(json.dumps(bound,sort_keys=True,separators=(',',':')).encode()).hexdigest()
     if c['approval'].get('scope_digest') != digest: raise ConfigError('approval_scope_mismatch')
+    snapshot = c.get('resources',{}).get('gpu_memory_snapshot_path')
+    if os.environ.get('JUDGMENT_GPU_MEMORY_SNAPSHOT') != snapshot:
+        raise ConfigError('vram_monitor_binding')
     if Path(c['canonical_checkout']).resolve() != Path.cwd().resolve(): raise ConfigError('canonical_checkout')
     try:
         head = subprocess.check_output(['git','rev-parse','HEAD'], text=True, stderr=subprocess.DEVNULL).strip()
@@ -164,6 +167,10 @@ def _memory(pid):
 
 
 def _gpu_memory(pid):
+    snapshot = os.environ.get('JUDGMENT_GPU_MEMORY_SNAPSHOT')
+    if snapshot:
+        from .gpu_snapshot import read_gpu_snapshot
+        return read_gpu_snapshot(snapshot)
     try:
         if os.name == 'nt':
             # WDDM은 process memory를 N/A로 반환한다. 전체 device 합계는
@@ -186,7 +193,7 @@ def _storage_bytes(config,run_dir):
     if c.get('canonical_checkout'):
         root=Path(c['canonical_checkout']);paths=(root/'.work').rglob('*')
         archive=root/'docs'/'한국어대화_new_260226.zip'
-        total=archive.stat().st_size if archive.is_file() else 0
+        total=(archive.stat().st_size if archive.is_file() else 0)+c['resources'].get('shared_runtime_image_bytes',0)
     else:
         paths=run_dir.rglob('*');total=c['resources']['estimated_disk_bytes']
     for path in paths:
@@ -256,7 +263,7 @@ def run_training(config, splits):
                   training_scope='head_only' if c['training']['freeze_encoder'] else 'encoder_and_head',
                   optimizer_updates_observed=result.get('optimizer_updates_observed'),
                   optimizer_updates_status='observed' if result.get('optimizer_updates_observed') is not None else 'unverified',memory_scope='sampled_peak',
-                  vram_scope='device_total_upper_bound' if os.name=='nt' else 'process',cleanup='retained_local_only_pending_review')
+                  vram_scope='host_all_gpu_adapter_upper_bound' if os.environ.get('JUDGMENT_GPU_MEMORY_SNAPSHOT') else 'device_total_upper_bound' if os.name=='nt' else 'process',cleanup='retained_local_only_pending_review')
     result.update(run_dir=str(run_dir),peak_ram_scope='parent_and_training_worker',disk_bytes_observed=_storage_bytes(config,run_dir))
     if replay_verified is not None: result['replay_verified'] = replay_verified
     (run_dir/'evidence.json').write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8')

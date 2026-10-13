@@ -176,6 +176,10 @@ def validate_run_config(payload: JSON, *, real: bool) -> RunConfig:
         if not isinstance(payload['approval'], dict) or payload['approval'].get('gate') != 'G1' or not payload['approval'].get('confirmed'):
             raise ConfigError('g1_required')
         if not isinstance(payload['resources'], dict): raise ConfigError('resources')
+        if 'shared_runtime_image_bytes' in payload['resources']:
+            image_bytes = payload['resources']['shared_runtime_image_bytes']
+            if isinstance(image_bytes, bool) or not isinstance(image_bytes, int) or image_bytes < 0:
+                raise ConfigError('shared_runtime_image_bytes')
         for key in ('disk_limit_bytes', 'estimated_disk_bytes', 'ram_limit_bytes', 'time_limit_seconds', 'checkpoint_bytes'):
             positive(payload['resources'].get(key), key)
         if payload['device'] == 'cuda': positive(payload['resources'].get('vram_limit_bytes'), 'vram_limit_bytes')
