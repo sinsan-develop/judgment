@@ -11,6 +11,8 @@
 - 독립 portability 리뷰1회 Critical0/Important2/Minor1: 승인config와환경변수 양방향binding, 전용venv/Python/Torch 버전 사전검증, 공유runtime이미지 점유량의 음수/bool/비정수 거절을 1회 보완. 새 경계 RED→GREEN 및 영향회귀38 PASS, 재리뷰 없음. suite 순서상 optimizer 시험이 먼저torch를 import하여 import-only 시험1회 실패했고 import 시험을 먼저실행해 실제 회귀없음 확인. 실제 A/B 미실행.
 - 전송은 자동승인검토에서 구체적 payload/destination 명시승인 부족으로거절. 18파일/684MB allowlist 묶음은 Windows ignored 로컬에준비했으나 PCWSL userdata/model 전송0. exactSHA 원격source/upstream, 전용venv·패키지준비·context없는GPU감시는 계속하며 원본/시험 자료는 열지않는다. 사용자에게 정확한 묶음/경로/목적/보존범위 승인을 요청해야 학습진행가능.
 - 준비오류: 이미지Torch는 basePython이아닌 /opt/venv에있어 projectvenv 상속실패1회. 읽기전용 site-packages 경로를 ownvenv .pth에연결해해결. setuptools wheel의vendored METADATA까지세어무결성검사가거절1회, wheel최상위distribution metadata만사용하도록 RED→GREEN2 PASS. 고정버전/hash검증은유지하며 글로벌패키지변경0.
+- PCWSL 준비결과: source checkpoint483a222/upstream고정SHA/clean, Linux37패키지 공식hash·size검증/신규수신53,161,061bytes(5GiB이내), Torch2.13.0+rocm7.2 유지, Python3.12.3, Laya editable/pipcheck PASS. projectvenv의 네트워크차단 합성·경계·optimizerhook 영향39시험 PASS. 실제모델호환/학습/697실소비/88갱신/A-B수치 미검증.
+- 현재예외: 전송승인만미충족. PCWSL train/test/baseweight 파일없음확인, 자료전송/학습0. 이번probe·설치·합성검증container와GPUsnapshot process 모두종료/제거. 기존음성서비스·DB·driver 변경0. 사용자에게18파일약684MB의 PCWSL전용 .work 이전범위 승인을 요청하고 승인후 hash대조·모델gate·같은상한 A/B 실행한다.
 
 ## 2026-10-14 승인된 A/B 동일 노출 비교 / 담당 어울
 
