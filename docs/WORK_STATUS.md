@@ -1,5 +1,13 @@
 # judgment 작업현황
 
+## 2026-10-14 PCWSL 비공개 전송 승인·실제 A/B 착수 / 담당 어울
+
+- 신산님이18파일약684MB의PCWSL전용 .work 전송을명시승인. 승인allowlist만SSH전송/전용권한해제압축,17payload파일의hash·크기전부일치(683,964,215bytes),final-test·과거시험점수·credential·원본ZIP전송0. 송수신임시tar만삭제,사용자원본/입력/모델/증거보존.
+- 실제GPU모델gate: 첫연결은libdxcore 목적경로차이로GPU인식실패1회,수정후같은이미지/전용환경에서실제모델/tokenizer 경계1시험PASS(11.71초, RAM2.26GiB/GPU상한2.15GiB/disk16.71GiB). 실패증거보존·optimizer실행0,기존서비스/driver변경0. 최적화attention experimental 옵션은켜지않고양쪽동일기본연산경로유지.
+- 반복입력gate PASS: A697고유/67그룹×1회, B280고유/62그룹(143×2+137×3), 양쪽노출697/업무558/없음139/예상optimizer88. 원본/출처/group/정답수정49/실효shuffle순서 추적고정·기존Windows 준비manifest와대조. calibration457/selection374만별도진단,final-test guard설치.
+- 실행자원: 판단전용일회성ROCm container와context없는host GPU감시,전체trial1800초/RAM24/GPU6/disk30GiB. 공유host보호를위해 owncontainer RAM4GiB+총RAM/swap8GiB로더좁게제한. port/network/타프로젝트volume없음,시험종료후이번container/감시만제거. sharedruntimeimage도projectdisk에포함. 실입력/최종weights/추적/평가증거는ignored .work에보존.
+- 다음: 안전checkpoint/원격exactSHA·clean확인 후 A→B순차1회실행,실697소비·88관측·인코더불변·동일초기·reload·자원한도·원본보존대조. 결과는선별/잠정정답수정/반복의합친효과이며품질판정not_decided. 상한/검증실패면해당실행만중단하고성공으로표시하지않는다.
+
 ## 2026-10-14 PCWSL 이전 착수 / 담당 어울
 
 - 직접 지시 '그럼 그기서 작업해'에 따라 PCWSL을 새 개발·A/B 실행 대상으로 승인. 기존 사용자 원본과 Windows 실패 증거는 보존하며 작업branch exactSHA를 Git으로 원격checkout한다. Windows 소스 archive 복사는 하지 않는다.
