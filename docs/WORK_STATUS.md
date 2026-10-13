@@ -7,6 +7,8 @@
 - 반복입력gate PASS: A697고유/67그룹×1회, B280고유/62그룹(143×2+137×3), 양쪽노출697/업무558/없음139/예상optimizer88. 원본/출처/group/정답수정49/실효shuffle순서 추적고정·기존Windows 준비manifest와대조. calibration457/selection374만별도진단,final-test guard설치.
 - 실행자원: 판단전용일회성ROCm container와context없는host GPU감시,전체trial1800초/RAM24/GPU6/disk30GiB. 공유host보호를위해 owncontainer RAM4GiB+총RAM/swap8GiB로더좁게제한. port/network/타프로젝트volume없음,시험종료후이번container/감시만제거. sharedruntimeimage도projectdisk에포함. 실입력/최종weights/추적/평가증거는ignored .work에보존.
 - 다음: 안전checkpoint/원격exactSHA·clean확인 후 A→B순차1회실행,실697소비·88관측·인코더불변·동일초기·reload·자원한도·원본보존대조. 결과는선별/잠정정답수정/반복의합친효과이며품질판정not_decided. 상한/검증실패면해당실행만중단하고성공으로표시하지않는다.
+- 실제실행: checkpoint49b0060 clean/원격일치에서A시작,15.68초에전체host GPU상한6,762,946,560bytes(6.30GiB)>6GiB로exit3자동중단. B시작0,A최종model/697실소비/88관측/reload/측정미완료,optimizer실제횟수미확인. parent+worker RAM2.06GiB/projectdisk16.72GiB관측,sharedimage포함. AMD adapterresident/committed 합산의보수상한이며단독VRAM으로표시하지않는다. `_Total`중복행없음직접확인,상승단계/타작업기여미확인. 같은학습자동재시도0.
+- 사후대조:원본6파일+선별/검토2파일 및초기weight hash불변,PCWSL final-test없음/열기0. 이번container/감시종료·제거,기존음성서비스/DB/driver변경0. PCWSL중단증거보존;Windows역복사는구체적승인부족자동검토거절로수행하지않고원문없는집계만보고. 새결과 docs/AB_COMPARISON_RESULT.md에미완료로기록. 자원실패1회(Windows실패와별도),중단집계경로를arm폴더로찾아수정한읽기오류1회;실학습재실행0. 다음은이예외보고이며GPU6GiB내사용량축소검증없이성공/효과를주장하지않는다.
 
 ## 2026-10-14 PCWSL 이전 착수 / 담당 어울
 
