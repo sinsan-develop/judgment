@@ -14,6 +14,10 @@
 - 시간 판정: 앞선 제안은 arm별30분/최대60분이었으나 최신 직접 지시의 '기존 자원 상한'을 보수적으로 적용해 전체 A/B·평가·집계에 단일1800초 deadline을 설정. 각 arm/worker에는 남은 시간만 전달한다. 학습 설정과697/88 조건은 변경하지 않는다.
 - 현재 변경: src/judgment/replay.py 신규, data.py의A/B test role 차단, runner.py의입력·실소비검증/접근guard, docs/run_ab_comparison.py, tests/test_replay.py, 이 기록. 원본/기존 모델/데이터·설치/credential 변화0. 다음은 수정 영향검사·안전checkpoint 뒤 실제 A/B 실행.
 - 실행 전 gate: 수정 후 영향회귀31 PASS, 새Python파일 AST 문법 PASS, 공개경로/Secret패턴6파일 safe=true/findings0 및수동content/diff검토 PASS, git diff --check PASS. 실제 GPU시험은 아직 미실행. 동일근본오류0, TDD 미구현 import 실패는 계획된RED와 구별한다. 새checkpoint에 데이터/모델/검토원문을 stage하지 않는다.
+- 실제 시도: 실행SHA3531f1458f6ddbb704844a81cc6146f715d14741의 clean/원격일치 확인 후 A/B 실행. A약45.2초에서 parent/worker 모두 전체device VRAM7.42GiB>6GiB를 감지해 exit3. B시작0. A완료모델/optimizer88/실제노출697/reload/평가 증거 없음, 실제optimizer 횟수도미확인. 상태 RESOURCE_LIMIT_STOP. 실패1회, 같은설정 자동재시도0, 상한완화/CPU장시간전환0.
+- 진단: 이실험 Native Python잔류0, device2325MiB 지속. Windows GPU dedicated 집계 vmwp 합계약2.27GiB(개별PID는로컬증거에만기록), VM이름/실험과의관계/작업내용/중단시점 기여는미확인. CPUtokenizer A첫159/B첫319/기존첫164token 확인으로 긴첫입력 가설은근거없음; GPU모델 재호출0. VM/driver/다른GPU작업 변경0.
+- 보존: 원본 train/calibration/selection examples+JSONL6파일 및선별제안/검토2파일 hash변화0. final-test는검증/hash명목으로도열지않음. 원본ZIP·기존모델 삭제/수정0. 고정replay/실효순서/승인config/worker미완료자료/상한로그/중단집계 보존. 공개결과 docs/AB_COMPARISON_RESULT.md 작성, 실제효과·품질수치 미산출을명시.
+- 다음: 전체GPU6GiB를지킬 가용상태와VM점유 관계 확인 필요. VM종료/다른GPU작업중단/driver·환경/상한변경은승인범위외이므로 수행하지않고 신산님 다음지시대기. 실패증거를덮어쓰거나 A를완료로표시하지않는다. 원문없는실행중단기록만작업branch에보존한다.
 
 ## 2026-10-14 학습 697건 의미 선별·동일 조건 실험안 / 담당 어울
 
