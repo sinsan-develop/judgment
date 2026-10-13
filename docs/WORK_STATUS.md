@@ -73,3 +73,17 @@
 - 미검증/미완료: 실제 tokenizer 최종 통과 수·개인정보 전체 검사·pip 설치·모델 준비·CUDA 실행·학습/가중치 갱신/reload·관측 optimizer 횟수·자원 peak·G2 품질 판정. 실제 학습/다운로드/설치 없음.
 - 보존: 안전한 집계·코드·규칙만 work/native-synthetic에 commit/push. 사용자 ZIP·출처 매핑·로컬 요약·G1 승인 원문·장비/운영 문서는 제외. 원격 SHA는 push 뒤 조회해 최종 보고한다. main 병합·배포 없음.
 - 다음: 신산님이 G1의 장비·설치/모델 준비·학습 설정·비용/저장/자원 상한을 묶어 승인한 뒤 해당 범위만 실행한다. 동의 완료 확인만으로 실제 학습 승인으로 해석하지 않는다.
+
+## 2026-10-14 G1 승인·분할 상속·준비 ABI 검사 / 담당 어울
+
+- 신산님 직접 승인: Windows 로컬 전용 준비·자원 상한 내 헤드-only 1 epoch 시험. 추가 조건은 확정 전체 분할에서 같은 250그룹을 상속 추출하고 그룹별 기록 저장·검증 후 학습, 재무작위 분할 금지. 현재 단계는 1단계 로컬 개발 검증이며 운영/배포/G2 품질 합격이 아니다.
+- 변경 사유와 전후: 기존 pilot의 balanced_parts 재분할 → 확정 전체 group_map 로드·그룹/대표 행 구조 대조·split 상속. 실제 G1 경로는 전체 splitter도 호출하지 않는다. 이전 후보 계획 138/37/37/38그룹 → 상속된 67/66/54/63그룹; 양성 574/369/300/357, 정답 없음 파생 계획 144/92/75/89, 합계 계획 718/461/375/446. 250그룹/1,600양성/585의도 선정은 유지했다.
+- 로컬 보존: 전체 기준 mapping을 다시 쓰지 않고 읽기 전용 유지. pilot 그룹별 full_split/split·양성 수와 원본/그룹 기록 digest를 로컬 inheritance manifest로 저장했다. 43,175 원본 행의 기존/재현 그룹 배정 대조 및 250그룹의 원본/상속 배정 일치, 대표 양성 1,600, 이동 0 확인. 원문/매핑/manifest는 원격 제외.
+- 검증: RED(상속 인자 미구현·splitter 차단)→GREEN 상속 3/3. 분할 누락·다중 배정 거절, 비율 불균형 그대로 상속, 재분할 함수를 호출하면 실패하는 검증. 기존 데이터 경계 9개도 PASS. 제품 전체 합성 suite를 같은 단계에서 반복하지 않는다.
+- 준비: 기존 Native Python 3.14 전용 venv 생성. ensurepip 제공 pip는 25.3으로 관측됐으며 기존 글로벌 pip를 바꾸지 않았다. 공식 wheel 38개 다운로드 2,932,975,749 bytes, 전체 hash/size 검증 완료. 실제 .work+원본 ZIP 점유 2,956,427,501 bytes 관측. 신규 설치·CUDA·모델 준비·학습은 아직 없음.
+- 오류 1: 준비 잠금 목록 작성 시 일반 cp314와 free-threaded cp314t ABI를 혼동해 hf-xet/tokenizers 두 wheel을 잘못 선택했다. Native 지원 tag 대조에서 두 개만 비호환 확인. 동일 버전의 공식 hf-xet cp38-abi3/tokenizers cp310-abi3 파일·hash를 확인하고 requirements.g1에 수정안을 제시했다. 추가 두 파일 합계 6,694,745 bytes; 버전/학습 범위/자원 상한 변화 없음. 원본 lock 승인안의 파일/hash 불일치 중단 조건에 따라 설치·학습 중단 및 신산님 확인 질문을 보냈다. 자동 최신/downgrade 없음.
+- 영향을 받지 않는 분할 기록·검증은 완료했다. package 설치·import/CUDA·토큰·최소 표본·원본/파생 쌍 처리·실학습·가중치 갱신/reload·optimizer 관측·독립 test/자원 peak는 미검증이다. 파생 400개는 아직 계획이다.
+- 변경 파일: aihub116_review.py/notebook, test_pilot_inheritance, AIHUB116_CONVERSION, requirements.g1 수정안, 이 기록. G1 승인 원문·환경·준비 영수증은 로컬 제외 문서에 기록한다. 공개 파일 검사 후 work/native-synthetic checkpoint를 non-force push하고 원격 SHA를 직접 대조한다.
+- 다음: ABI 수정안 실행 확인 후 동일 버전/고정 hash로 준비를 계속하고, CUDA·토큰·최소 표본 검사를 통과해야 승인된 첫 파이프라인 시험을 실행한다. 본 단계 결과를 학습 성공으로 표시하지 않는다.
+- 독립 리뷰 1회: Critical 0/Important 1/Minor 0. 기존 summary/pilot 파일 순차 덮어쓰기는 저장 실패 시 기존 증거를 훼손할 수 있다는 finding. RED→GREEN 기존 기록 비교 전용·내용 변경 시 거절·덮어쓰기 없음으로 1회 수정했고, 쓰기 불가 fixture에서 기존 bytes 보존을 확인했다. 다시 리뷰하지 않았다.
+- 수정 후 전체 suite: 57 실행/56 PASS/실제 로컬 모델 1 SKIP. 실제 모델 시험의 경로가 없어 skip된 것이며 G1 승인 자체가 없는 것은 아니다. 실제 ZIP 재실행도 성공, 원래 전체 group_map의 digest 보존 및 재분할 호출 없음 확인. 이 suite는 준비/상속 코드 회귀 증거이며 실제 학습 성공 증거가 아니다.

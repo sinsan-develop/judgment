@@ -3,7 +3,7 @@ import unittest
 
 
 class RealAdapterTests(unittest.TestCase):
-    @unittest.skipUnless(os.environ.get('JUDGMENT_REAL_CONFIG'), 'G1 미승인: 명시된 로컬 모델/실제 tokenizer 없음')
+    @unittest.skipUnless(os.environ.get('JUDGMENT_REAL_CONFIG'), '실제 로컬 모델/tokenizer 검사 설정 경로 없음')
     def test_real_local_only_adapter(self):
         import json
         from pathlib import Path

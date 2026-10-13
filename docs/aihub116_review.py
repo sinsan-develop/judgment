@@ -18,7 +18,7 @@ import zipfile
 
 import openpyxl
 
-SCHEMA_VERSION = 'aihub116-review-v1'
+SCHEMA_VERSION = 'aihub116-review-v2-inherited-pilot'
 SPLITS = ('train', 'calibration', 'selection', 'test')
 RATIOS = (.7, .1, .1, .1)
 
@@ -119,7 +119,7 @@ def ingest(archive):
     return all_rows, profiles
 
 
-def analyze(rows, profiles, *, seed=13):
+def analyze(rows, profiles, *, seed=13, full_mapping=None):
     excluded = collections.Counter()
     eligible = []
     for row in rows:
@@ -158,7 +158,25 @@ def analyze(rows, profiles, *, seed=13):
     random.Random(seed).shuffle(stable_groups)
     ideal = [len(stable_groups)*r for r in RATIOS]; group_counts=[math.floor(v) for v in ideal]
     for i in sorted(range(4),key=lambda i:ideal[i]-group_counts[i],reverse=True)[:len(stable_groups)-sum(group_counts)]: group_counts[i]+=1
-    parts=balanced_parts(stable_groups,seed=seed)
+    if full_mapping is None:
+        parts=balanced_parts(stable_groups,seed=seed)
+    else:
+        # G1 추출은 저장된 확정 배정만 사용하며 splitter를 다시 호출하지 않는다.
+        fixed={(r['file_index'],r['excel_row']):r for r in full_mapping}
+        if len(fixed)!=len(full_mapping): raise ValueError('fixed_full_split_changed')
+        parts={split:[] for split in SPLITS}; seen=set()
+        for group_i,group in enumerate(stable_groups):
+            assignments=set()
+            for representative in group:
+                for origin in identical[representative['input_key']]:
+                    key=(origin['file'],origin['excel_row']);seen.add(key)
+                    saved=fixed.get(key)
+                    if saved is None or saved['group']!=group_i or saved['representative']!=(origin is representative):
+                        raise ValueError('fixed_full_split_changed')
+                    assignments.add(saved['split'])
+            if len(assignments)!=1 or not assignments<=set(SPLITS): raise ValueError('fixed_full_split_changed')
+            parts[next(iter(assignments))].append(group)
+        if seen!=set(fixed): raise ValueError('fixed_full_split_changed')
     intersections={}
     for a_idx,a in enumerate(SPLITS):
         for b in SPLITS[a_idx+1:]:
@@ -181,12 +199,13 @@ def analyze(rows, profiles, *, seed=13):
              'group_count':len(stable_groups),'group_sizes_desc':sorted((len(g) for g in stable_groups),reverse=True)[:15],
              'schemas':schema_summary,'split':split_summary,'split_intersections':intersections,
              'group_split_possible':all(parts[k] for k in SPLITS) and all(all(v==0 for v in checks.values()) for checks in intersections.values()),
+             'full_split_loaded_from_fixed_mapping':full_mapping is not None,
              'profiles':profiles,'tokenizer_checked':False,'gold_absent_source_rows_used':0,
              'quality_gate':'data_rules_proposal_not_training_approval'}
     assert len(rows)==sum(excluded.values())+len(usable)
     assert sum(v['examples'] for v in split_summary.values())==len(representatives)
     assert all(all(v==0 for v in checks.values()) for checks in intersections.values())
-    summary['pilot']=pilot_plan(stable_groups,seed=seed)
+    summary['pilot']=pilot_plan(stable_groups,seed=seed,full_parts=parts)
     summary['groups_are_conservative_not_verified_source_dialogue_ids']=True
     group_ids={id(g):i for i,g in enumerate(stable_groups)}
     mapping=[{'file_index':origin['file'],'excel_row':origin['excel_row'],'group':group_ids[id(g)],'split':split,
@@ -206,14 +225,24 @@ def balanced_parts(groups, *, ratios=RATIOS, seed=13):
     return parts
 
 
-def pilot_plan(groups, *, seed=13):
+def pilot_plan(groups, *, seed=13, full_parts):
     """큰 연결/공공민원은 첫 시험에서 제외하고 완전한 소상공인 그룹만 고른다."""
     eligible=[g for g in groups if len(g)<=160 and all(r['schema']=='business' for r in g)]
     random.Random(seed).shuffle(eligible)
     chosen=[];count=0
     for group in eligible:
         if count+len(group)<=1600:chosen.append(group);count+=len(group)
-    parts=balanced_parts(chosen,seed=seed)
+    # 후보 선정 순서만 고정 seed를 사용한다. 분할은 확정 전체 자료에서 상속한다.
+    membership=collections.defaultdict(list)
+    for split,full_groups in full_parts.items():
+        if split not in SPLITS: raise ValueError('full_group_assignment')
+        for group in full_groups: membership[id(group)].append(split)
+    if any(len(membership[id(group)])!=1 for group in groups):
+        raise ValueError('full_group_assignment')
+    parts={split:[group for group in chosen if membership[id(group)][0]==split] for split in SPLITS}
+    group_ids={id(group):i for i,group in enumerate(groups)}
+    assignments=[{'group':group_ids[id(group)],'split':split,'full_split':membership[id(group)][0],
+                  'positive_examples':len(group)} for split,part in parts.items() for group in part]
     base_counts=[sum(map(len,parts[k])) for k in SPLITS]
     total_absent=min(400,count//4)
     raw=[total_absent*n/count if count else 0 for n in base_counts];absent=[math.floor(n) for n in raw]
@@ -229,7 +258,8 @@ def pilot_plan(groups, *, seed=13):
             'positive_examples':count,'derived_no_answer_examples':sum(absent),'total_planned_examples':count+sum(absent),
             'intent_count':len({r['target'] for g in chosen for r in g}),
             'split':{k:{'groups':len(parts[k]),'positive':base_counts[i],'derived_no_answer':absent[i],'total':base_counts[i]+absent[i]} for i,k in enumerate(SPLITS)},
-            'split_intersections':overlaps,'actual_candidates_generated':False,'actual_tokenizer_checked':False,
+            'split_intersections':overlaps,'inherits_full_split':True,'group_assignment':assignments,
+            'actual_candidates_generated':False,'actual_tokenizer_checked':False,
             'selection_rule':'complete connected components only; max 1600 positives then up to 400 post-split gold-excluded variants'}
 
 
@@ -239,15 +269,39 @@ def _group_by(rows,key):
     return result
 
 
+def preserve_json_record(path,value):
+    """기존 승인 근거는 비교만 하며 덮어쓰지 않는다."""
+    if path.exists():
+        if json.loads(path.read_text(encoding='utf-8'))!=value:
+            raise ValueError('existing_analysis_changed')
+        return
+    with path.open('x',encoding='utf-8') as stream:
+        json.dump(value,stream,ensure_ascii=False,indent=2)
+
+
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--archive',type=Path,required=True);parser.add_argument('--output',type=Path,required=True)
     args=parser.parse_args()
     warnings.filterwarnings('ignore',message='Workbook contains no default style')
-    rows,profiles=ingest(args.archive);summary,mapping=analyze(rows,profiles)
+    full_path=args.output/'group_map.private.json'
+    if not full_path.is_file(): raise ValueError('fixed_full_map_required')
+    full=json.loads(full_path.read_text(encoding='utf-8'))
+    rows,profiles=ingest(args.archive);summary,mapping=analyze(rows,profiles,full_mapping=full)
     args.output.mkdir(parents=True,exist_ok=True)
-    (args.output/'summary.json').write_text(json.dumps(summary,ensure_ascii=False,indent=2),encoding='utf-8')
-    (args.output/'group_map.private.json').write_text(json.dumps(mapping,ensure_ascii=False),encoding='utf-8')
-    print(json.dumps({k:v for k,v in summary.items() if k not in ('profiles','split_intersections')},ensure_ascii=False,indent=2))
+    assignments=summary['pilot']['group_assignment']
+    expected={(row['file_index'],row['excel_row']):(row['group'],row['split']) for row in full}
+    actual={(row['file_index'],row['excel_row']):(row['group'],row['split']) for row in mapping}
+    if expected!=actual: raise ValueError('fixed_full_split_changed')
+    for assignment in assignments:
+        origins=[row for row in full if row['group']==assignment['group']]
+        if not origins or {row['split'] for row in origins}!={assignment['split']}:
+            raise ValueError('pilot_does_not_inherit_full_split')
+    preserve_json_record(args.output/'summary.json',summary)
+    preserve_json_record(args.output/'pilot_groups.private.json',assignments)
+    # 기준 전체 mapping은 읽기 전용으로 보존한다.
+    safe={k:v for k,v in summary.items() if k not in ('profiles','split_intersections')}
+    safe['pilot']={k:v for k,v in summary['pilot'].items() if k!='group_assignment'}
+    print(json.dumps(safe,ensure_ascii=False,indent=2))
 
 
 if __name__=='__main__': main()
