@@ -18,15 +18,27 @@ def current_telemetry():
     return _ACTIVE[-1] if _ACTIVE else None
 
 
-def atomic_json(path, value, *, publish_before_sync=False):
+def atomic_json(path, value, *, publish_before_sync=False, timing=None):
+    started=time.perf_counter();last=started
+    def mark(name):
+        nonlocal last
+        now=time.perf_counter()
+        if timing is not None:timing[name]=now-last
+        last=now
     path=Path(path)
     temporary=path.with_name(path.name+f'.tmp-{os.getpid()}-{threading.get_ident()}')
     try:
+        serialized=json.dumps(value,ensure_ascii=True,allow_nan=False);mark('serialize')
         fd=os.open(temporary,os.O_WRONLY|os.O_CREAT|os.O_TRUNC,0o600)
+        mark('open')
         with os.fdopen(fd,'w',encoding='utf-8') as stream:
-            json.dump(value,stream,ensure_ascii=True,allow_nan=False);stream.flush()
+            stream.write(serialized);mark('write')
+            stream.flush();mark('flush')
             if not publish_before_sync: os.fsync(stream.fileno())
+            mark('fsync')
+        mark('close')
         os.replace(temporary,path)
+        mark('replace')
         if publish_before_sync:
             # 중단 packet만 먼저 공개한다. sync 완료를 기다리느라 상한 종료를 늦추지 않는다.
             fd=os.open(path,os.O_RDWR)
@@ -35,6 +47,8 @@ def atomic_json(path, value, *, publish_before_sync=False):
     finally:
         try: temporary.unlink()
         except FileNotFoundError: pass
+        mark('cleanup')
+        if timing is not None:timing['total']=time.perf_counter()-started
 
 
 def append_json(path,value):
@@ -136,6 +150,7 @@ class Telemetry:
         self.thread=threading.Thread(target=self._writer,daemon=True)
         self.sampler=threading.Thread(target=self._sample,daemon=True)
         self.failure_once=threading.Lock();self.failure_record=None;self.failure_fd=None;self.inflight_operation=None
+        self.timing_fd=None
 
     def fail(self,operation,error=None):
         self.failed.set()  # 별도 로그 I/O를 기다리며 중단을 늦추지 않는다.
@@ -173,19 +188,29 @@ class Telemetry:
             item=self.queue.get()
             if item is None: return
             kind,value,done=item
+            timing={};writer_start=time.perf_counter()
             try:
                 self.inflight_operation='writer.append_json'
                 if kind=='output': append_json(self.folder/'worker.output.private.jsonl',value)
                 else:
                     append_json(self.folder/(self.role+'.events.private.jsonl'),value)
                     self.inflight_operation='writer.atomic_json'
-                    atomic_json(self.folder/(self.role+'.progress.private.json'),value)
+                    if self.timing_fd is None:atomic_json(self.folder/(self.role+'.progress.private.json'),value)
+                    else:atomic_json(self.folder/(self.role+'.progress.private.json'),value,timing=timing)
             except Exception as e:self.fail(self.inflight_operation,e)
-            finally:self.inflight_operation=None;done.set()
+            finally:
+                if self.timing_fd is not None:
+                    row=dict(kind=kind,stage=value.get('stage'),sequence=value.get('sequence'),atomic=timing,
+                        lock_wait=value.get('lock_wait_seconds'),queue_wait=writer_start-getattr(done,'enqueued_at',writer_start),
+                        writer_total=time.perf_counter()-writer_start,sampled_epoch=time.time())
+                    try:os.write(self.timing_fd,(json.dumps(row)+'\n').encode())
+                    except OSError:pass
+                self.inflight_operation=None;done.set()
 
     def _submit(self,kind,value,*,wait=True):
         if self.failed.is_set(): raise ConfigError('telemetry_unavailable')
         done=threading.Event()
+        done.enqueued_at=time.perf_counter()
         try: self.queue.put_nowait((kind,value,done))
         except queue.Full:
             self.fail('submit.queue_full');raise ConfigError('telemetry_unavailable') from None
@@ -198,10 +223,12 @@ class Telemetry:
         try:memory=self.memory()
         except Exception as e:self.fail('event.memory',e);raise
         if event=='heartbeat' and self.stop_sampling.is_set(): return
+        lock_start=time.perf_counter()
         with self.lock:
             self.state.update(stage=stage or self.state['stage'],event=event,sequence=self.state['sequence']+1,
                 sampled_epoch=time.time(),monotonic_seconds=time.monotonic(),own_memory=memory)
             if position is not None: self.state['encoded_exposure_position']=position
+            if self.timing_fd is not None:self.state['lock_wait_seconds']=time.perf_counter()-lock_start
             if error_type is not None:
                 self.state['error_type']=error_type if error_type in ('RuntimeError','ValueError','TypeError','ConfigError','InputError','ModelError','OSError','MemoryError') else 'redacted_exception'
             self._submit('state',dict(self.state))
@@ -231,6 +258,8 @@ class Telemetry:
     def __enter__(self):
         self.folder.mkdir(exist_ok=True)
         self.failure_fd=os.open(self.folder/'telemetry.failure.min.private.jsonl',os.O_WRONLY|os.O_CREAT|os.O_APPEND,0o600)
+        if os.environ.get('JUDGMENT_TELEMETRY_TIMING')=='1':
+            self.timing_fd=os.open(self.folder/'writer.timings.private.jsonl',os.O_WRONLY|os.O_CREAT|os.O_APPEND,0o600)
         self.thread.start()
         try: self.event('started')
         except BaseException:
@@ -246,6 +275,7 @@ class Telemetry:
         try: self.queue.put_nowait(None)
         except queue.Full:self.fail('close.queue_full')
         self.thread.join(self.timeout)
+        if not self.thread.is_alive() and self.timing_fd is not None:os.close(self.timing_fd);self.timing_fd=None
         if self.thread.is_alive() or self.sampler.is_alive():self.fail('close.thread_timeout')
         if self.failure_record is None and self.failure_fd is not None:os.close(self.failure_fd);self.failure_fd=None
         if exc_type is None and (self.thread.is_alive() or self.sampler.is_alive() or self.failed.is_set()): raise ConfigError('telemetry_unavailable')

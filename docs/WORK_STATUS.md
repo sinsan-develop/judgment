@@ -1,5 +1,11 @@
 # judgment 작업현황
 
+## 2026-10-14 atomic_json 지연 계측·최소 보완 / 담당 어울
+
+- 직접승인:A/B보류/경로·serialize·lock·write·flush/fsync·replace분리계측/1초상한단순연장금지/일반기록지연과안전감시구분/GPU6GiB·중단유지/모델로드+반복기록검증.
+- 실제경로PCWSL /home/daon/deploy/judgment/.work/runs는 /dev/sdd ext4/WSL내부,symlink없음/Windows공유경로아님. Docker /workspace는해당WSL정본bind. 원인판정전에선택적JUDGMENT_TELEMETRY_TIMING=1로atomic의9계측과queue/lock/writer총시간분리,JSON직렬화와stream쓰기구분. 정상1초대기/감시중단정책아직변경0.
+- 계획자원:own atomic-timing-before-20261014-01 container+CIMproducer/기존image·GPU/RAM4g+총RAMswap8g/networknone. 실제모델로드+80회0.5초반복기록만,학습·optimizer·eval·final-test0. 진단private timing은fsync없는소형FD에기록,source안전commit→Git exactSHA→계측→근거기반최소보완→합성실패경계+같은모델반복시험. 이번자원만정리/서비스변경·역복사0.
+
 ## 2026-10-14 독립 오류 로그 적용 A/B 비교1회 승인 / 담당 어울
 
 - 종료판정:sourceacabafb8b31e51d6d4639d25b295d91f844d0a35/A parent69.858초실패/B미시작/비교미산출/자동재시도0. 독립최초오류 submit.wait_timeout/진단TimeoutError/단계model_load/완료optimizer0/inflight writer.atomic_json. 정상기록기존1초대기내done미설정확인,atomic내부지연작업·기여원인미확인. worker guard65.981초 telemetry_unavailable→자체exit3,parent termination_requestedfalse/proc오류0. 마지막progressage2.495초/not_started/정확최종optimizer수미확인.

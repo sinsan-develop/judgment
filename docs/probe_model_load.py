@@ -10,6 +10,7 @@ import sys
 import time
 
 parser=argparse.ArgumentParser();parser.add_argument('--root',type=Path,required=True);parser.add_argument('--probe-id',required=True)
+parser.add_argument('--repeat-records',type=int,default=0)
 args=parser.parse_args();root=args.root.resolve();os.chdir(root);sys.path.insert(0,str(root/'src'))
 from judgment.contracts import RunConfig
 from judgment.runner import _worker_limits, _memory
@@ -31,9 +32,12 @@ with Telemetry(folder,role='worker') as t:
         with t.phase('model_load'):
             adapter=LayaAdapter.from_local(Path(c['model_dir']),source_commit=c['source_commit'],model_revision=c['model_revision'],device=c['device'])
         after=own_memory(_memory);t.event('device_after_load')
+        for i in range(args.repeat_records):
+            t.event('repeated_progress',position=i+1);time.sleep(.5)
         time.sleep(2);t.event('model_load_verified')
         del adapter;gc.collect();torch.cuda.empty_cache()
 atomic_json(folder/'summary.private.json',dict(status='model_load_and_telemetry_complete',elapsed_seconds=time.monotonic()-start,
     before=before,after=after,optimizer_updates=0,training_started=False,final_test_opened=False,
+    repeated_records=args.repeat_records,
     source_sha=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()))
 print('MODEL_LOAD_AND_TELEMETRY_COMPLETE',flush=True)
