@@ -41,9 +41,17 @@ def failure_note(fd,detail):
 
 
 def publish_live_snapshot(output,value,*,timing=None):
-    # 현재값은 flush+atomic replace로 공개한다. reboot 이후 재사용하지 않는
-    # 일시 감시 계수이므로 fsync 지연으로 관측 루프를 중단시키지 않는다.
-    atomic_json(output,value,timing=timing,sync=False)
+    # 두 슬롯을 번갈아 쓴다. 독자는 JSON이 완성된 최신 fresh 슬롯을 사용한다.
+    # 한 슬롯 쓰기 중에는 다른 슬롯을 읽으며 replace/fsync를 기다리지 않는다.
+    started=time.perf_counter();payload=json.dumps(value,allow_nan=False)
+    if timing is not None:timing['serialize']=time.perf_counter()-started
+    slot=getattr(publish_live_snapshot,'slot',0)
+    target=Path(output).with_name(Path(output).name+f'.slot{slot}')
+    fd=os.open(target,os.O_WRONLY|os.O_CREAT|os.O_TRUNC,0o600)
+    with os.fdopen(fd,'w',encoding='utf-8') as stream:
+        stream.write(payload);stream.flush()
+    publish_live_snapshot.slot=1-slot
+    if timing is not None:timing['total']=time.perf_counter()-started
 
 
 def main(output, stop_file):

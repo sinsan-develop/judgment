@@ -19,9 +19,20 @@ def parse_adapter_memory(rows):
     return total
 
 
+def read_gpu_value(path, *, now=None):
+    path=Path(path);values=[]
+    for candidate in (path,path.with_name(path.name+'.slot0'),path.with_name(path.name+'.slot1')):
+        try:
+            value=json.loads(candidate.read_text(encoding='utf-8'))
+            validate_gpu_snapshot(value,now=now)
+            values.append(value)
+        except (OSError,ValueError,ConfigError):pass
+    if not values:raise ConfigError('vram_monitor_unavailable')
+    return max(values,key=lambda value:value['sampled_epoch'])
+
+
 def read_gpu_snapshot(path, *, now=None, observation=None):
-    try: value = json.loads(Path(path).read_text(encoding='utf-8'))
-    except (OSError, ValueError): raise ConfigError('vram_monitor_unavailable') from None
+    value=read_gpu_value(path,now=now)
     used=validate_gpu_snapshot(value,now=now)
     if observation is not None: observation.update(value)
     return used

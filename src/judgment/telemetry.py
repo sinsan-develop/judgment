@@ -123,8 +123,8 @@ def secret_safe_output(line):
 
 
 def gpu_baseline(snapshot_path,output,*,limit=None):
-    from .gpu_snapshot import validate_gpu_snapshot,parse_adapter_memory
-    snapshot=json.loads(Path(snapshot_path).read_text(encoding='utf-8'))
+    from .gpu_snapshot import validate_gpu_snapshot,parse_adapter_memory,read_gpu_value
+    snapshot=read_gpu_value(snapshot_path)
     validate_gpu_snapshot(snapshot)
     rows=snapshot.get('adapters')
     if not isinstance(rows,list) or not rows or any(not isinstance(r.get('Name'),str) or not r['Name'] for r in rows):

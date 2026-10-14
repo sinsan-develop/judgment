@@ -11,6 +11,25 @@ spec.loader.exec_module(producer)
 
 
 class ProducerTests(unittest.TestCase):
+    def test_torn_slot_fallback_stale_rejection_and_limit_value(self):
+        import json
+        from judgment.gpu_snapshot import read_gpu_snapshot
+        from judgment.contracts import ConfigError
+        with tempfile.TemporaryDirectory(dir=producer.ROOT/'.work') as tmp:
+            output=Path(tmp)/'gpu.json';now=time.time()
+            row=dict(sampled_epoch=now,bytes_used=6*1024**3+1,scope='windows_gpu_adapter_upper_bound',producer_pid=1)
+            Path(str(output)+'.slot0').write_text(json.dumps(row))
+            Path(str(output)+'.slot1').write_text('{')
+            self.assertEqual(read_gpu_snapshot(output,now=now),6*1024**3+1)
+            with self.assertRaises(ConfigError):read_gpu_snapshot(output,now=now+16)
+    def test_live_publish_does_not_depend_on_replace(self):
+        from judgment.gpu_snapshot import read_gpu_value
+        with tempfile.TemporaryDirectory(dir=producer.ROOT/'.work') as tmp:
+            output=Path(tmp)/'gpu.json'
+            row=dict(sampled_epoch=time.time(),bytes_used=1,scope='windows_gpu_adapter_upper_bound',producer_pid=1)
+            with patch('os.replace',side_effect=OSError('replace stalled')):
+                producer.publish_live_snapshot(output,row)
+            self.assertEqual(read_gpu_value(output)['bytes_used'],1)
     def test_live_snapshot_and_history_do_not_wait_for_fsync(self):
         with tempfile.TemporaryDirectory(dir=producer.ROOT/'.work') as tmp:
             output=Path(tmp)/'gpu.json'
@@ -19,7 +38,7 @@ class ProducerTests(unittest.TestCase):
                 self.assertIsNone(result['failure_kind'])
                 producer.append_json(Path(tmp)/'history.jsonl',{'bytes_used':1},sync=False)
                 sync.assert_not_called()
-            self.assertTrue(output.exists())
+            self.assertTrue(any(Path(tmp).glob('gpu.json.slot*')))
 
     def test_stop_during_query_does_not_publish(self):
         with tempfile.TemporaryDirectory(dir=producer.ROOT/'.work') as tmp:
@@ -50,7 +69,7 @@ class ProducerTests(unittest.TestCase):
             def denied(*a,**k):
                 stop.touch()
                 raise PermissionError(13,'private text')
-            with patch.object(producer.subprocess,'check_output',return_value='[{"DedicatedUsage":1,"SharedUsage":0,"TotalCommitted":1}]'),patch.object(producer,'atomic_json',side_effect=denied):
+            with patch.object(producer.subprocess,'check_output',return_value='[{"DedicatedUsage":1,"SharedUsage":0,"TotalCommitted":1}]'),patch.object(producer,'publish_live_snapshot',side_effect=denied):
                 with self.assertRaisesRegex(RuntimeError,'snapshot_recording_failed'):producer.main(output,stop)
             row=json.loads((Path(tmp)/'gpu.failures.private.jsonl').read_text())
             self.assertEqual((row['failure_kind'],row['errno'],row['stop_seen']),('exception',13,True))

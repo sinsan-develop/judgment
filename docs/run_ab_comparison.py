@@ -239,10 +239,10 @@ def new_trial(root,trial_id):
 
 
 def wait_start_samples(snapshot, *, timeout=30., limit=int(2.75*1024**3)):
-    from judgment.gpu_snapshot import validate_gpu_snapshot
+    from judgment.gpu_snapshot import validate_gpu_snapshot,read_gpu_value
     started=time.time();deadline=time.monotonic()+timeout;last=None;rows=[]
     while time.monotonic()<deadline:
-        value=load(Path(snapshot));validate_gpu_snapshot(value)
+        value=read_gpu_value(Path(snapshot));validate_gpu_snapshot(value)
         stamp=value['sampled_epoch']
         if stamp>=started and stamp!=last:
             last=stamp
