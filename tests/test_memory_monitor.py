@@ -105,4 +105,3 @@ class MemoryMonitorTests(unittest.TestCase):
             self.assertLessEqual(result['peak_vram_bytes'],6*1024**3)
             self.assertNotIn('torch',sys.modules)
             print('MODEL_FREE_MONITOR',json.dumps({k:result[k] for k in ['elapsed_seconds','worker_returncode','peak_ram_bytes','peak_vram_bytes']}),flush=True)
-
