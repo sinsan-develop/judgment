@@ -1,5 +1,11 @@
 # judgment 작업현황
 
+## 2026-10-14 독립 오류 로그 적용 A/B 비교1회 승인 / 담당 어울
+
+- 직접승인:기존설정/동일초기가중치/GPU6GiB/전체1800초/A정상완료후B/calibration·selection평가/final-test비접근/실패자동재시도0. trial approved-independent-log-ab-20261014-01,이전실패 namespace보존/고정697노출·88optimizer/선별280·잠정정답49유지.
+- 검증된코드a0dd121의독립최소로그/감시·중단을그대로사용,코드·설정수정0. 모델로드단독및합성시험반복0. 이번기록checkpoint exactSHA를PCWSLGit으로동기화/원본입력·가중치고정검사/시작GPU≤6→승인실제1회.
+- 계획자원:judgment-ab-independent-log-20261014-01 owncontainer1개(기존immutable image/networknone/RAM4GiB+총RAMswap8GiB/GPU연결)와ownCIMproducer1개. 전체1800초독립guard/기존RAM24·disk30GiB/GPU6유지. 이번자원만종료/기존서비스변경0/private로그현지보존/역복사0. 실패시독립오류로그·마지막단계·저장optimizer수·종료코드·자원집계보고.
+
 ## 2026-10-14 telemetry 실패 원인·모델 로드 전용 재현 / 담당 어울
 
 - 검증판정:source8a29cae exactSHA/모델로드전용probe model-load-probe-20261014-01 정상60.111초 exit0/최종model_load_verified/optimizer0. 초기화전GPU not_initialized·RSS745525248bytes,로드후allocated1307824640/reserved1333788672·RSS1696055296bytes;해제후allocator0. 최소실패로그0행/기존실패재현안됨으로정확한이전호출·예외미확인,근본해결확정0. 실제학습·평가·final-test열기0.
