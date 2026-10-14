@@ -2,8 +2,11 @@
 
 ## 2026-10-14 snapshot 종료 진단·임시 실제 학습 메모리 검증 / 담당 어울
 
+- 최종공동PASS:source d7512ee02c0d503990556665cffa46bbc6127e64/probe training-memory-final-20261014-01/fresh3모두2.514442GiB/worker60.099초exit0·전체78.236초/producerexit0·55GPU표본·최대간격4.888초·오류0. selection374+forward/backward각16+AdamW2 enter/exit전수일치/head31변경/원본입력·초기가중치hash불변/검증가중치저장재사용0. 자체peakallocated1.742301/reserved1.888672/host4.762081GiB<6/추가2.247639GiB/피크첫기록training_backward exit. workerfatal0·일반delay1비치명/모델해제후3.965초까지host관측. ownproducer15736·container잔류0. 최종4시험+snapshot6+telemetry19중18PASS1skip/PCWSL4PASS/공개보고docs/TRAINING_MEMORY_START_GATE.md. 전체88·저장reload미검증/A-B0/final-test0/타프로그램종료0/역복사0.
+- 최종제안:6-추가2.247639-여유1=2.752361GiB→fresh3전체GPU≤2.75GiB시작. 기존평가전용3.0제안갱신/6GiB·총1800·기존학습설정·각697노출88·같은초기·A정상후B·실패재시도0/calibration·selection만·final-test0/효과선별+정답수정+반복합산. A-B는별도승인전실행하지않음.
+
 - 1차실측:source9ef7a57/fresh3모두2.514442GiB/임시모델98.124초exit0/selection374·16forward·16backward·AdamW2·head31텐서변경/초기·입력hash불변/임시가중치저장재사용0. 자체peakallocated1.742301/reserved1.888672/host4.429058GiB<6/추가1.914616GiB. worker최소fatal0/일반delay1개는비치명. producer snapshot timeout1.000367초/stop_seenfalse/flush후fsync구간1초초과exit1(물리I/O·스케줄링기여미구분).
-- 근거보완:일시GPUsnapshot·history만flush+atomic replace/flush로변경해fsync대기제거. 일반진행·중단packet의durable기본값유지/실제쓰기예외·1초상한·15초stale·6GiB계속. 느린fsync주입RED→4시험PASS. 추가모델학습재시도0/감시만120초정상·종료검증예정.
+- 근거보완:일시GPUsnapshot·history만flush+atomic replace/flush로변경해fsync대기제거. 일반진행·중단packet의durable기본값유지/실제쓰기예외·1초상한·15초stale·6GiB계속. 느린fsync주입RED→4시험PASS. 감시단독120초요청/전체134.620초·관측133.189초·100표본·최대간격4.870초·오류0·producerexit0 확인. 이후피크가host관측중단뒤발생한8초공백을확인해최종코드동일범위임시모델공동검증1회추가(fresh3모두2.514442GiB/새인스턴스·16노출2갱신·가중치저장재사용0),A-B0.
 - 직접승인:종료후snapshot오류근거확인/최소보완/fresh3전체GPU≤3GiB시별도임시모델실제forward·backward·optimizer짧은검증/6GiB유지/가중치A-B재사용금지/실측근거최종시작조건. A-B실행승인아님/final-test0/타프로그램종료0/역복사0.
 - 과거근거:stop파일1791954980.627690→오류로그1791954980.825690(차0.198초). 이전루프CIM조회후stop재검사없음/bounded_call이쓰기예외와1초대기초과를bool로소실. 종료와저장중첩가능성확인/과거정확한OS오류·timeout확정불가.
 - 최소보완:조회뒤stop재검사/저장예외type·errno와timeout구분/atomic구간계측/독립preopen0600최소로그dupFD daemon20ms/진짜쓰기실패는stop존재해도숨기지않음. 1초쓰기상한·15초stale·6GiB·감시중단유지. TDD stop중조회 RED·분류미구현RED→3시험PASS.

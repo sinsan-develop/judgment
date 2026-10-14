@@ -2,6 +2,8 @@
 
 2026-10-14 / 담당 어울 / **선택374건 학습 전 평가 PASS, 실제 학습·A/B는 미실행**
 
+후속 임시 학습 공동 검증은 [snapshot 진단·임시 학습 피크·최종 시작 조건](TRAINING_MEMORY_START_GATE.md)에 기록했다. 그 실측으로 시작 조건은 아래 평가 전용3.0GiB 제안에서 **fresh3표본 전체GPU≤2.75GiB**로 갱신됐다. 이 문서의 수치는 당시 평가 전용 결과다.
+
 ## 진단과 최소 보완
 
 고정 upstream `c73908d96ff73c0062c340a11bf7c54ec7d8bc4d`의 `calibration_records`는 기본 batch16, `@torch.no_grad()`, `model.eval()`, `_forward(..., amp=False, detach_encoder=False)`다. 각 배치 logits를 `.cpu().numpy()`로 옮겨 CPU records에 보관하므로 **GPU에 결과를 계속 쌓는 구조는 아니다.** 이전 `before_training_selection`의 일시적 allocated 피크와 reserved 증가가 batch16 forward 구간에서 관측됐다.
