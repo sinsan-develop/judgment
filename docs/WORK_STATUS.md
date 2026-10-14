@@ -2,6 +2,9 @@
 
 ## 2026-10-14 공동 검증 여유 기준 A/B 1회 승인 / 담당 어울
 
+- 종료판정:source17b79ff88707c23715718f36e8ef6d0b8029a89b/fresh3GPU표본모두2.5528946GiB≤4후승인실제1회실행. A75.971초vram_limit/hostpeak7383695360bytes(6.877GiB)>6/workerexit3/B미시작/비교미산출/자동재시도0. 마지막before_training_selection·완료optimizer0/not_started/recordage2.649초/정확종료수미확인.
+- 기여근거:평가enter reserved1367343104→첫heartbeat3212836864→마지막4303355904bytes(4.008GiB),peakallocated3004742656bytes(2.798GiB). 모델로드공동검증1.242GiB기준은실제다음선택평가피크를포함하지않음. 프로세스추측원인·한도/설정변경0. fatal독립로그0/일반model_load대기지연경고1개는비치명으로계속,이번중단원인아님.
+- 보존:parent+workerRAM표본peak2494324736bytes/worker마지막RSS2094268416bytes/disk17974205756bytes<30GiB,adapter적용827392/2392064/7380475904bytes. 원본8파일·초기가중치hash불변/final-test내용·hash열기0/비교calibration·selection측정미실행. owncontainer/producerPID12278잔류0/producerexit0/private현지보존/역복사0. 공개보고docs/AB_COMPARISON_RESULT.md갱신/승인1회소진/다음은안전기록checkpoint·근거보고/추가수정·학습0.
 - 직접승인:정상공동검증의시작2.311GiB/피크3.640GiB/추가상한관측약1.329GiB·reserved1.242GiB를근거로fresh3표본≤4GiB(최소2GiB여유)확인후A/B1회,부족시미시작. 기존6GiB·총1800초·설정·697노출88optimizer·동일초기·A정상완료후B·calibration/selection평가·final-test0·실패자동재시도0.
 - trial approved-headroom-ab-20261014-01. own judgment-ab-headroom-20261014-01 container+CIMproducer/검증된기존image/networknone/RAM4GiB+총RAMswap8GiB/기존GPU연결. 이전실패/private원본입력·순서·가중치보존,코드·설정변경/모델단독시험반복0. 안전checkpoint→PCWSLGit exactSHA→3표본여유검사→승인실제1회→이번자원만정리/보존/보고. 다른프로그램·서비스중지/한도변경/역복사0.
 
