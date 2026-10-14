@@ -331,7 +331,7 @@ def drain_output(pipe,telemetry,stream):
                 buffered+=chunk
                 while b'\n' in buffered:
                     line,buffered=buffered.split(b'\n',1);telemetry.output(stream,line.decode('utf-8',errors='replace'))
-                if len(buffered)>4096:
+                if len(buffered)>4096 and not telemetry.preserve_output:
                     telemetry.output(stream,'');buffered=b''
             if buffered: telemetry.output(stream,buffered.decode('utf-8',errors='replace'))
         except Exception as e:telemetry.fail('drain_output',e)
