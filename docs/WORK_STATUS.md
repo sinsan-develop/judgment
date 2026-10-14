@@ -1,5 +1,11 @@
 # judgment 작업현황
 
+## 2026-10-14 A checkpoint 평가·B1회 저장fp16 대칭 비교 1230초 직접승인 / 담당 어울
+
+- 직접승인:보존A checkpoint 재학습0/엄격FP16파일·170tensor/실제strictload검사후calibrationselection평가→측정child정상종료·allocated/reserved/activeworkers0→fresh3전체≤2.75후B동일초기1회697노출88·기존학습설정→B도F16저장strictreload로동일평가비교. 후속전체1230초단일deadline·6GiB감시·final-test0/실패즉시중단·자동재시도0/승인범위비교까지실행.
+- 구현:기존ABlauncher followup/stored-measure modes·공통interpreter/cwd/module/worker_process/adapter/evaluation함수 재사용. A원본checkpoint SHA고정 ecb8e4/초기SHA9d628f/epochexit88·학습설정일치·encoder불변검사/복사본에파생provenance추가·원본불변. 각stored-measure는FP16전체finite·구조검사→strict state_dict로드후tensor재half값digest전수일치·같은보정/자료. CPU-FP16byte비교·공통1230deadline2RED→2PASS/startgate2PASS. 부모GPUcontext없음/measurechild종료로해제·B만run_training호출. trial approved-checkpoint-followup-20261014-01/owncontainer+producer각1/기존image·networknone·RAM4+총RAMswap8·GPU6/안전commitpush→exactSHA→freshgate→단일실행→보존report. 추가모델시험반복0.
+
+
 ## 2026-10-14 A checkpoint 보존·snapshot replace 보완·재학습없는 재개 판단 / 담당 어울
 
 - 최종검증:source da0c512a860248dbe41936ad9693d0c9575d9628/모델없는snapshot-slots-600-20261014-01 600.523초producerexit0/486표본·2967정상읽기·실패0·오류로그0/최대나이5.054초·간격5.083초(15초이내). cap-isolation actualslot6GiB+1byte·다른slot미완성→owneddummyexit3/vram_limit·unrelateddummy생존/실제서비스조작0. 전체130중126PASS4skip/모델부하아래새슬롯아직미검증. 추가A-B·모델로드·평가0/final-test열기0.

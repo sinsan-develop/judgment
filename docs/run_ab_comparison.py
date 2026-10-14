@@ -16,6 +16,7 @@ import random
 import re
 import shutil
 import subprocess
+import struct
 import sys
 import time
 
@@ -153,7 +154,7 @@ def measure(root, folder, arm, config, model_dir):
         return _measure(root,folder,arm,config,model_dir,telemetry)
 
 
-def _measure(root, folder, arm, config, model_dir,telemetry):
+def _measure(root, folder, arm, config, model_dir,telemetry,*,strict_fp16=False):
     import torch
     from judgment.contracts import SOURCE_COMMIT, ScoredExample, ABSTAIN_ID
     from judgment.data import load_real_bundle
@@ -162,9 +163,23 @@ def _measure(root, folder, arm, config, model_dir,telemetry):
     bundle = load_real_bundle(config, roles=('calibration', 'selection'))
     labels = sorted({c.id for role in ('calibration', 'selection') for e in bundle.parts[role]
                      for c in e.request.candidates} | {ABSTAIN_ID})
+    expected=fp16_manifest(model_dir/'model.safetensors') if strict_fp16 else None
     with telemetry.phase('measurement_model_load'):
         adapter = LayaAdapter.from_local(model_dir, source_commit=SOURCE_COMMIT,
                                         model_revision=config.values['model_revision'], device='cuda')
+    if strict_fp16:
+        with telemetry.phase('strict_fp16_reload'):
+            live=adapter.backend.model.state_dict()
+            if set(live)!=set(expected):raise ValueError('strict_reload_keys')
+            for name,tensor in live.items():
+                if list(tensor.shape)!=expected[name]['shape']:raise ValueError('strict_reload_shape')
+                cpu=tensor.detach().to(device='cpu',dtype=torch.float16).contiguous()
+                if hashlib.sha256(memoryview(cpu.numpy()).cast('B')).hexdigest()!=expected[name]['digest']:
+                    raise ValueError('strict_reload_value')
+                del cpu
+            del live
+            save(folder/arm/'strict-reload.private.json',dict(tensors=len(expected),stored_dtype='F16',
+                 weight_sha256=sha(model_dir/'model.safetensors'),strict_values_verified=True),immutable=True)
     torch.cuda.reset_peak_memory_stats()
     scored = {}
     for role in ('calibration', 'selection'):
@@ -236,6 +251,137 @@ def new_trial(root,trial_id):
         shutil.copyfile(source,target)
         if sha(source)!=sha(target): raise ValueError('trial_preparation_copy')
     return folder
+
+
+def fp16_manifest(path):
+    import array
+    result={};spans=[]
+    with Path(path).open('rb') as stream:
+        n=struct.unpack('<Q',stream.read(8))[0];header=json.loads(stream.read(n));base=8+n
+        payload=Path(path).stat().st_size-base
+        for name,item in header.items():
+            if name=='__metadata__':continue
+            a,b=item['data_offsets'];shape=item['shape']
+            if item['dtype']!='F16' or not 0<=a<=b<=payload or b-a!=math.prod(shape)*2:
+                raise ValueError('checkpoint_structure')
+            spans.append((a,b));stream.seek(base+a);left=b-a;digest=hashlib.sha256()
+            while left:
+                data=stream.read(min(left,4*1024**2))
+                if not data:raise ValueError('checkpoint_structure')
+                left-=len(data);digest.update(data)
+                try:
+                    import numpy as np
+                    bits=np.frombuffer(data,dtype='<u2');bad=bool(np.any((bits&0x7c00)==0x7c00))
+                except ImportError:
+                    bits=array.array('H');bits.frombytes(data)
+                    if sys.byteorder!='little':bits.byteswap()
+                    bad=any((v&0x7c00)==0x7c00 for v in bits)
+                if bad:raise ValueError('checkpoint_nonfinite')
+            result[name]=dict(shape=shape,digest=digest.hexdigest())
+        spans.sort()
+        if not spans or spans[0][0]!=0 or spans[-1][1]!=payload or any(x[1]!=y[0] for x,y in zip(spans,spans[1:])):
+            raise ValueError('checkpoint_structure')
+    return result
+
+
+def followup_remaining(start,now):
+    remaining=1230.-(now-start)
+    if remaining<=0:raise ValueError('followup_time_limit')
+    return remaining
+
+
+def stored_measure(root,trial_id,arm,model_dir):
+    from judgment.contracts import RunConfig
+    from judgment.runner import preflight,_worker_limits
+    from judgment.replay import install_final_test_guard
+    from judgment.telemetry import Telemetry
+    folder=root/'.work/ab_trials'/trial_id;c=RunConfig(load(folder/arm/'evaluation.config.private.json'))
+    install_final_test_guard(c);preflight(c)
+    if str(model_dir)!=c.values['evaluation_model_dir'] or sha(model_dir/'model.safetensors')!=c.values['evaluation_model_sha256']:
+        raise ValueError('evaluation_model_binding')
+    with Telemetry(folder/arm,role='worker',arm=arm) as telemetry,_worker_limits(c,folder/arm):
+        measured=_measure(root,folder,arm,c,model_dir,telemetry,strict_fp16=True)
+        save(folder/arm/'summary.json',dict(status='stored_model_measured',trained=False,optimizer_updates_observed=0,
+                                          measurement=measured,final_test_opened=False))
+
+
+def measure_in_worker(root,folder,arm,config,model_dir):
+    from judgment.runner import worker_invocation,_training_process
+    from judgment.telemetry import Telemetry
+    values=deepcopy(config.values);values.update(evaluation_model_dir=str(model_dir),evaluation_model_sha256=sha(model_dir/'model.safetensors'))
+    config=bind(values);save(folder/arm/'evaluation.config.private.json',values,immutable=True)
+    _,env,cwd=worker_invocation(config,folder/arm)
+    command=[sys.executable,str(root/'docs/run_ab_comparison.py'),'stored-measure','--root',str(root),
+             '--trial-id',folder.name,'--arm',arm,'--model-dir',str(model_dir)]
+    with Telemetry(folder/arm,role='parent',arm=arm,preserve_output=True) as telemetry:
+        result=_training_process(config,folder/arm,command,env,None,telemetry,cwd=cwd).values
+    save(folder/(arm+'.evaluation-worker.private.json'),result,immutable=True)
+    if result.get('worker_returncode')!=0 or result.get('status')!='stored_model_measured':raise ValueError('stored_evaluation_failed')
+    return load(folder/(arm+'.measurement.private.json'))
+
+
+def followup(root,trial_id,a_run):
+    from judgment.runner import _worker_limits,run_training
+    from judgment.replay import install_final_test_guard
+    from judgment.data import load_real_bundle
+    started=time.monotonic();folder=new_trial(root,trial_id);preparation=load(folder/'preparation.private.json')
+    config=arm_config(root,folder,'A',preparation);install_final_test_guard(config)
+    initial=Path(config.values['model_dir']);initial_sha=sha(initial/'model.safetensors')
+    if initial_sha!='9d628fd971b700382ac6f65920a86f149777b2e748e0c955fb3b19695aa8f204':raise ValueError('initial_weight_changed')
+    checkpoint=a_run/'output/checkpoint_latest'
+    if sha(checkpoint/'model.safetensors')!='ecb8e425645ad42755841e9d960f0c03e9ea361a1bb960912d2c8d8a0b2f1339':raise ValueError('A_checkpoint_changed')
+    original_cfg=load(a_run/'config.json')
+    if original_cfg['training']!=config.values['training'] or original_cfg['model_revision']!=config.values['model_revision']:
+        raise ValueError('A_training_config_mismatch')
+    events=[json.loads(line) for line in (a_run/'worker.events.private.jsonl').read_text().splitlines()]
+    if sum(x.get('stage')=='optimizer_step' and x.get('event')=='exit' for x in events)!=88 or not any(x.get('stage')=='train_model' and x.get('event')=='exit' and x.get('completed_optimizer_updates')==88 for x in events):
+        raise ValueError('A_completion_evidence')
+    values=deepcopy(config.values);values['resources']['time_limit_seconds']=followup_remaining(started,time.monotonic());global_config=bind(values)
+    with _worker_limits(global_config,folder) as global_resources:
+        for arm in ('A','B'):
+            (folder/arm).mkdir()
+            values=deepcopy(arm_config(root,folder,arm,preparation).values)
+            values['resources']['time_limit_seconds']=followup_remaining(started,time.monotonic());config=bind(values)
+            samples=wait_start_samples(values['resources']['gpu_memory_snapshot_path'],timeout=min(30.,followup_remaining(started,time.monotonic())))
+            save(folder/arm/'start-headroom.private.json',dict(limit_bytes=int(2.75*1024**3),samples=samples),immutable=True)
+            if arm=='A':
+                source=fp16_manifest(initial/'model.safetensors');saved=fp16_manifest(checkpoint/'model.safetensors')
+                if set(source)!=set(saved) or any(source[k]['shape']!=saved[k]['shape'] for k in source):raise ValueError('A_shape_mismatch')
+                if any(source[k]['digest']!=saved[k]['digest'] for k in source if k.startswith('encoder.')):raise ValueError('A_encoder_changed')
+                model_dir=folder/'A/restored_checkpoint';shutil.copytree(checkpoint,model_dir)
+                provenance=load(initial/'judgment_provenance.json');provenance.update(trained_artifact_sha256=sha(model_dir/'model.safetensors'),
+                    derived_from_epoch_checkpoint=str(checkpoint),completed_optimizer_updates=88,source_training_code_revision=original_cfg['code_revision'])
+                save(model_dir/'judgment_provenance.json',provenance)
+                save(folder/'A.training.private.json',dict(status='recovered_epoch_checkpoint',optimizer_updates_observed=88,
+                     new_optimizer_updates=0,initial_weight_sha256=initial_sha,checkpoint_sha256=sha(model_dir/'model.safetensors')),immutable=True)
+            else:
+                if followup_remaining(started,time.monotonic())<600:raise ValueError('insufficient_time_for_B')
+                if sha(initial/'model.safetensors')!=initial_sha:raise ValueError('initial_weight_changed')
+                trained=run_training(config,load_real_bundle(config,roles=('train','selection'))).values
+                save(folder/'B.training.private.json',trained,immutable=True)
+                if not trained.get('trained') or trained.get('optimizer_updates_observed')!=88:raise ValueError('B_training_failed')
+                model_dir=Path(trained['run_dir'])/'output'
+            values=deepcopy(config.values);values['resources']['time_limit_seconds']=followup_remaining(started,time.monotonic());config=bind(values)
+            measured=measure_in_worker(root,folder,arm,config,model_dir)
+            save(folder/(arm+'.result.private.json'),dict(measurement=measured),immutable=True)
+            from judgment.runner import _ACTIVE_WORKERS
+            if _ACTIVE_WORKERS:raise ValueError('resources_not_released')
+            torch=sys.modules.get('torch')
+            initialized=bool(torch is not None and torch.cuda.is_initialized())
+            if initialized:gc.collect();torch.cuda.empty_cache()
+            allocated=torch.cuda.memory_allocated() if initialized else 0
+            reserved=torch.cuda.memory_reserved() if initialized else 0
+            if allocated or reserved:raise ValueError('resources_not_released')
+            # 평가 child가 정상 종료돼 GPU context가 해제된 후 다음 arm의 새 표본을 검사한다.
+            save(folder/arm/'released.private.json',dict(active_workers=0,measurement_worker_exited=True,
+                 parent_gpu_initialized=initialized,allocated_bytes=allocated,reserved_bytes=reserved),immutable=True)
+            print(json.dumps(dict(stage='arm_complete',arm=arm,elapsed_seconds=time.monotonic()-started)),flush=True)
+        if sha(initial/'model.safetensors')!=initial_sha or load(folder/'sources.before.private.json')!={str(p):sha(p) for p in source_paths(root)}:
+            raise ValueError('original_or_initial_weights_changed')
+        summary=dict(status='ab_saved_fp16_comparison_complete',interpretation='combined_selection_label_change_repetition_effect',
+          A_retrained=False,storage_comparison='both_fp16_saved_and_strict_reloaded',paired_selection_accuracy_delta=paired_accuracy_interval(root,folder),
+          final_test_opened=False,source_preserved=True,elapsed_seconds=time.monotonic()-started,followup_limit_seconds=1230,global_resources=global_resources)
+        followup_remaining(started,time.monotonic());save(folder/'summary.private.json',summary,immutable=True)
 
 
 def wait_start_samples(snapshot, *, timeout=30., limit=int(2.75*1024**3)):
@@ -349,9 +495,12 @@ def run(root,*,trial_id=None):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('command', choices=('prepare', 'precheck', 'run'))
+    parser.add_argument('command', choices=('prepare', 'precheck', 'run','stored-measure','followup'))
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--trial-id',help='별도로 승인한 단일 재시도의 새 보존 이름; 기존 증거 재사용/덮어쓰기 금지')
+    parser.add_argument('--arm',choices=('A','B'))
+    parser.add_argument('--model-dir',type=Path)
+    parser.add_argument('--a-run',type=Path)
     args = parser.parse_args()
     root = args.root.resolve()
     os.chdir(root)
@@ -362,4 +511,10 @@ if __name__ == '__main__':
     elif args.command=='precheck':
         if args.trial_id:parser.error('trial-id is for approved run only')
         precheck(root)
+    elif args.command=='stored-measure':
+        if not args.trial_id or not args.arm or not args.model_dir:parser.error('stored-measure requires trial-id/arm/model-dir')
+        stored_measure(root,args.trial_id,args.arm,args.model_dir)
+    elif args.command=='followup':
+        if not args.trial_id or not args.a_run:parser.error('followup requires trial-id/a-run')
+        followup(root,args.trial_id,args.a_run)
     else: run(root,trial_id=args.trial_id)
