@@ -2,6 +2,8 @@
 
 ## 2026-10-14 atomic_json 지연 계측·최소 보완 / 담당 어울
 
+- 재현결과:sourcee586331 모델로드중exit3/독립submit.wait_timeout writer.atomic_json/완료0,52완료계측. writer전체max1.6336초/atomic max0.6505초/serialize max0.103ms/fsync중앙100.280ms·max221.113ms/lock max260.011ms/queue max0.280ms. 각구간벽시계는스케줄링·GIL재개도포함,물리디스크장애확정0. 완료대기에는append+atomic 2회durable fsync가누적되며state lock을유지한I/O대기가확인됨.
+- 최소보완:TDD일반기록지연비치명/대기중잠금해제2RED→구현. heartbeat history만flush(최신snapshot durable fsync유지),phase/optimizer history durable유지. queue삽입·순서는lock내/1초wait는lock외. 1초내done미완료는독립delay로그·delayed flag로분리,한도연장0. 실제writer예외·queuefull·메모리/6GiB·stale 감시중단은기존failed/독립guard그대로. 정상close에writer미완료면완료로승격하지않음.
 - 직접승인:A/B보류/경로·serialize·lock·write·flush/fsync·replace분리계측/1초상한단순연장금지/일반기록지연과안전감시구분/GPU6GiB·중단유지/모델로드+반복기록검증.
 - 실제경로PCWSL /home/daon/deploy/judgment/.work/runs는 /dev/sdd ext4/WSL내부,symlink없음/Windows공유경로아님. Docker /workspace는해당WSL정본bind. 원인판정전에선택적JUDGMENT_TELEMETRY_TIMING=1로atomic의9계측과queue/lock/writer총시간분리,JSON직렬화와stream쓰기구분. 정상1초대기/감시중단정책아직변경0.
 - 계획자원:own atomic-timing-before-20261014-01 container+CIMproducer/기존image·GPU/RAM4g+총RAMswap8g/networknone. 실제모델로드+80회0.5초반복기록만,학습·optimizer·eval·final-test0. 진단private timing은fsync없는소형FD에기록,source안전commit→Git exactSHA→계측→근거기반최소보완→합성실패경계+같은모델반복시험. 이번자원만정리/서비스변경·역복사0.

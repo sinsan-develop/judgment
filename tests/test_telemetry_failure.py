@@ -34,8 +34,9 @@ class FailureTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=TMP) as name:
             p=Path(name);t=Telemetry(p,role='worker',memory=lambda:{},timeout=.03)
             with patch('judgment.telemetry.append_json',side_effect=lambda *a:time.sleep(.15)):
-                with self.assertRaises(ConfigError):t.__enter__()
-            row=self.read_failure(p)
+                t.__enter__()
+            self.assertFalse(t.failed.is_set());self.assertTrue(t.delayed.is_set())
+            row=json.loads((p/'telemetry.delay.min.private.jsonl').read_text().splitlines()[0])
             self.assertEqual(row['operation'],'submit.wait_timeout')
             self.assertEqual(row['stage'],'started');self.assertEqual(row['inflight_operation'],'writer.append_json')
-            t.thread.join(1)
+            time.sleep(.3);t.__exit__(None,None,None)

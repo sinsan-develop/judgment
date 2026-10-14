@@ -35,8 +35,9 @@ class TelemetryTests(unittest.TestCase):
             t=Telemetry(Path(temporary),role='worker',memory=lambda:{})
             ready=threading.Event();release=threading.Event();original=t._submit
             def submit(kind,value,**kwargs):
-                original(kind,value,**kwargs)
+                done=original(kind,value,**kwargs)
                 if value.get('event')=='heartbeat': ready.set();release.wait(.6)
+                return done
             t._submit=submit;t.__enter__()
             self.assertTrue(ready.wait(1.5))
             timer=threading.Timer(.2,release.set);timer.start()

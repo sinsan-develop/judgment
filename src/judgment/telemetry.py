@@ -51,11 +51,12 @@ def atomic_json(path, value, *, publish_before_sync=False, timing=None):
         if timing is not None:timing['total']=time.perf_counter()-started
 
 
-def append_json(path,value):
+def append_json(path,value,*,sync=True):
     fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_APPEND,0o600)
     with os.fdopen(fd,'w',encoding='utf-8') as stream:
         stream.write(json.dumps(value,ensure_ascii=True,allow_nan=False)+'\n')
-        stream.flush();os.fsync(stream.fileno())
+        stream.flush()
+        if sync:os.fsync(stream.fileno())
 
 
 def bounded_save(path,value,*,timeout=.05,publish_before_sync=False):
@@ -150,7 +151,7 @@ class Telemetry:
         self.thread=threading.Thread(target=self._writer,daemon=True)
         self.sampler=threading.Thread(target=self._sample,daemon=True)
         self.failure_once=threading.Lock();self.failure_record=None;self.failure_fd=None;self.inflight_operation=None
-        self.timing_fd=None
+        self.timing_fd=None;self.delay_fd=None;self.delayed=threading.Event();self.delay_count=0
 
     def fail(self,operation,error=None):
         self.failed.set()  # 별도 로그 I/O를 기다리며 중단을 늦추지 않는다.
@@ -193,7 +194,9 @@ class Telemetry:
                 self.inflight_operation='writer.append_json'
                 if kind=='output': append_json(self.folder/'worker.output.private.jsonl',value)
                 else:
-                    append_json(self.folder/(self.role+'.events.private.jsonl'),value)
+                    # heartbeat history는 flush, 최신 snapshot은 기존 durable fsync 유지.
+                    if value.get('event')=='heartbeat':append_json(self.folder/(self.role+'.events.private.jsonl'),value,sync=False)
+                    else:append_json(self.folder/(self.role+'.events.private.jsonl'),value)
                     self.inflight_operation='writer.atomic_json'
                     if self.timing_fd is None:atomic_json(self.folder/(self.role+'.progress.private.json'),value)
                     else:atomic_json(self.folder/(self.role+'.progress.private.json'),value,timing=timing)
@@ -214,10 +217,22 @@ class Telemetry:
         try: self.queue.put_nowait((kind,value,done))
         except queue.Full:
             self.fail('submit.queue_full');raise ConfigError('telemetry_unavailable') from None
-        if wait:
-            if not done.wait(self.timeout):
-                self.fail('submit.wait_timeout');raise ConfigError('telemetry_unavailable')
-            if self.failed.is_set():raise ConfigError('telemetry_unavailable')
+        if wait:self._wait_record(done)
+        return done
+
+    def _wait_record(self,done):
+        if not done.wait(self.timeout):
+            self.delayed.set();self.delay_count+=1
+            if self.delay_count==1:
+                row=dict(classification='progress_delay',operation='submit.wait_timeout',exception_type='TimeoutError',
+                    stage=self.state.get('stage'),inflight_operation=self.inflight_operation,sampled_epoch=time.time())
+                fd=self.delay_fd
+                def note():
+                    try:
+                        if fd is not None:os.write(fd,(json.dumps(row)+'\n').encode())
+                    except OSError:pass
+                thread=threading.Thread(target=note,daemon=True);thread.start();thread.join(.02)
+        if self.failed.is_set():raise ConfigError('telemetry_unavailable')
 
     def event(self,stage,*,event='state',position=None,error_type=None):
         try:memory=self.memory()
@@ -231,7 +246,8 @@ class Telemetry:
             if self.timing_fd is not None:self.state['lock_wait_seconds']=time.perf_counter()-lock_start
             if error_type is not None:
                 self.state['error_type']=error_type if error_type in ('RuntimeError','ValueError','TypeError','ConfigError','InputError','ModelError','OSError','MemoryError') else 'redacted_exception'
-            self._submit('state',dict(self.state))
+            done=self._submit('state',dict(self.state),wait=False)
+        self._wait_record(done)  # queue 순서 보존, I/O 대기 중 state lock 해제.
 
     @contextmanager
     def phase(self,stage):
@@ -258,6 +274,7 @@ class Telemetry:
     def __enter__(self):
         self.folder.mkdir(exist_ok=True)
         self.failure_fd=os.open(self.folder/'telemetry.failure.min.private.jsonl',os.O_WRONLY|os.O_CREAT|os.O_APPEND,0o600)
+        self.delay_fd=os.open(self.folder/'telemetry.delay.min.private.jsonl',os.O_WRONLY|os.O_CREAT|os.O_APPEND,0o600)
         if os.environ.get('JUDGMENT_TELEMETRY_TIMING')=='1':
             self.timing_fd=os.open(self.folder/'writer.timings.private.jsonl',os.O_WRONLY|os.O_CREAT|os.O_APPEND,0o600)
         self.thread.start()
@@ -265,6 +282,8 @@ class Telemetry:
         except BaseException:
             try: self.queue.put_nowait(None)
             except queue.Full: pass
+            if self.delay_fd is not None:os.close(self.delay_fd);self.delay_fd=None
+            if self.timing_fd is not None and not self.thread.is_alive():os.close(self.timing_fd);self.timing_fd=None
             # 실패 진단 daemon과 writer가 종료 전에 FD를 사용한다. process 종료로 회수한다.
             raise
         _ACTIVE.append(self);self.sampler.start();return self
@@ -276,6 +295,7 @@ class Telemetry:
         except queue.Full:self.fail('close.queue_full')
         self.thread.join(self.timeout)
         if not self.thread.is_alive() and self.timing_fd is not None:os.close(self.timing_fd);self.timing_fd=None
+        if self.delay_fd is not None:os.close(self.delay_fd);self.delay_fd=None
         if self.thread.is_alive() or self.sampler.is_alive():self.fail('close.thread_timeout')
         if self.failure_record is None and self.failure_fd is not None:os.close(self.failure_fd);self.failure_fd=None
         if exc_type is None and (self.thread.is_alive() or self.sampler.is_alive() or self.failed.is_set()): raise ConfigError('telemetry_unavailable')
