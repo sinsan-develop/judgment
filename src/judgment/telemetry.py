@@ -226,11 +226,16 @@ class Telemetry:
             if self.delay_count==1:
                 row=dict(classification='progress_delay',operation='submit.wait_timeout',exception_type='TimeoutError',
                     stage=self.state.get('stage'),inflight_operation=self.inflight_operation,sampled_epoch=time.time())
-                fd=self.delay_fd
+                try:fd=os.dup(self.delay_fd) if self.delay_fd is not None else None
+                except OSError:fd=None
                 def note():
                     try:
                         if fd is not None:os.write(fd,(json.dumps(row)+'\n').encode())
                     except OSError:pass
+                    finally:
+                        if fd is not None:
+                            try:os.close(fd)
+                            except OSError:pass
                 thread=threading.Thread(target=note,daemon=True);thread.start();thread.join(.02)
         if self.failed.is_set():raise ConfigError('telemetry_unavailable')
 
