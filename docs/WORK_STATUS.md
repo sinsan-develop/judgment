@@ -1,5 +1,10 @@
 # judgment 작업현황
 
+## 2026-10-14 공동 검증 여유 기준 A/B 1회 승인 / 담당 어울
+
+- 직접승인:정상공동검증의시작2.311GiB/피크3.640GiB/추가상한관측약1.329GiB·reserved1.242GiB를근거로fresh3표본≤4GiB(최소2GiB여유)확인후A/B1회,부족시미시작. 기존6GiB·총1800초·설정·697노출88optimizer·동일초기·A정상완료후B·calibration/selection평가·final-test0·실패자동재시도0.
+- trial approved-headroom-ab-20261014-01. own judgment-ab-headroom-20261014-01 container+CIMproducer/검증된기존image/networknone/RAM4GiB+총RAMswap8GiB/기존GPU연결. 이전실패/private원본입력·순서·가중치보존,코드·설정변경/모델단독시험반복0. 안전checkpoint→PCWSLGit exactSHA→3표본여유검사→승인실제1회→이번자원만정리/보존/보고. 다른프로그램·서비스중지/한도변경/역복사0.
+
 ## 2026-10-14 GPU 기여 대조·모델 로드80기록 공동 검증 / 담당 어울
 
 - 최종PASS:source9936e85d4105759040435c48bade6c688391ea93/probe gpu-headroom-joint-20261014-01/3fresh기준모두2.3109436GiB≤4→105.791초exit0/실제model_load exit·지정반복state80개1~80전수일치·sequence정상·fatal/delay로그각0bytes. 자체allocated1307824640/reserved1333788672bytes(1.218/1.242GiB),hostGPUpeak3908644864bytes(3.640GiB)<6. 초기모델hash불변/producerPID11396·owncontainer잔류0/private현지보존/역복사0/optimizer·학습·평가·final-test열기0.
