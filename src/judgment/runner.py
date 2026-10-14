@@ -191,11 +191,27 @@ def _memory(pid):
             if not ok: raise ConfigError('memory_monitor_unavailable')
             return c.WorkingSetSize
         finally: api.CloseHandle(handle)
+    detail=dict(pid=pid,source='proc_status')
     try:
-        for line in Path(f'/proc/{pid}/status').read_text().splitlines():
-            if line.startswith('VmRSS:'): return int(line.split()[1])*1024
-    except OSError: raise ConfigError('memory_monitor_unavailable') from None
-    raise ConfigError('memory_monitor_unavailable')
+        lines=Path(f'/proc/{pid}/status').read_text().splitlines()
+    except OSError as e:
+        detail.update(failure_kind='proc_read_error',errno=e.errno)
+    else:
+        for line in lines:
+            if line.startswith('State:'):
+                state=line.split()[1:2]
+                if state and state[0] in ('R','S','D','Z','T','t','X','I'): detail['process_state']=state[0]
+            if line.startswith('VmRSS:'):
+                try:
+                    parts=line.split()
+                    if len(parts)!=3 or parts[2]!='kB' or int(parts[1])<0: raise ValueError()
+                    return int(parts[1])*1024
+                except (ValueError,IndexError):
+                    detail['failure_kind']='rss_parse_error'
+                    break
+        else: detail['failure_kind']='rss_missing'
+    error=ConfigError('memory_monitor_unavailable');error.monitor_detail=detail
+    raise error from None
 
 
 def _gpu_memory(pid):
@@ -274,7 +290,7 @@ def run_training(config, splits):
 
 def _training_process(config,run_dir,cmd,env,replay_verified,telemetry):
     c=config.values
-    start = time.monotonic(); peak_ram = peak_vram = 0; failure = None;trigger=None
+    start = time.monotonic(); peak_ram = peak_vram = 0; failure = None;trigger=None;monitor_failure=None
     telemetry.event('worker_launch',event='enter')
     snapshot=c['resources'].get('gpu_memory_snapshot_path')
     if snapshot: gpu_baseline(snapshot,run_dir/'gpu.before-launch.private.json',limit=c['resources']['vram_limit_bytes'])
@@ -298,12 +314,21 @@ def _training_process(config,run_dir,cmd,env,replay_verified,telemetry):
             telemetry.event('worker_running',event='heartbeat')
             time.sleep(.2)
     except ConfigError as e:
-        if proc.poll() is None: failure = e.code
+        observed_exit=proc.poll()
+        detail=getattr(e,'monitor_detail',None)
+        if observed_exit is None:
+            failure = e.code
+            monitor_failure=detail or dict(failure_kind=e.code)
+        else:
+            # poll→/proc 조회 사이 종료 경합은 정상 종료를 감시 실패로 바꾸지 않는다.
+            telemetry.state.update(last_sample_failure=detail,worker_returncode=observed_exit)
+            telemetry.event('worker_exit_during_sample')
     finally:
         try:
             if failure:
                 bounded_save(run_dir/'limit_failure.json',lambda:stop_evidence(run_dir,dict(reason=failure,
-                    peak_ram_bytes=peak_ram,peak_vram_upper_bound_bytes=peak_vram,elapsed_seconds=time.monotonic()-start,trigger=trigger)),publish_before_sync=True)
+                    peak_ram_bytes=peak_ram,peak_vram_upper_bound_bytes=peak_vram,elapsed_seconds=time.monotonic()-start,trigger=trigger,
+                    monitor_failure=monitor_failure,worker_returncode_before_stop=proc.poll())),publish_before_sync=True)
         finally:
             if proc.poll() is None:
                 try: proc.terminate()
@@ -311,6 +336,9 @@ def _training_process(config,run_dir,cmd,env,replay_verified,telemetry):
                     if failure: proc.kill()
         try: proc.wait(timeout=10)
         except subprocess.TimeoutExpired: proc.kill(); proc.wait()
+        # 종료 후 반환 코드는 종료 자체를 지연하지 않는 별도 bounded 기록으로 남긴다.
+        bounded_save(run_dir/'worker.exit.private.json',dict(pid=proc.pid,returncode=proc.returncode,
+            monitor_failure=monitor_failure,termination_requested=bool(failure),sampled_epoch=time.time()),publish_before_sync=True)
         _ACTIVE_WORKERS.remove(proc)
         for thread in drains: thread.join(.1)
     summary_path = run_dir/'summary.json'
@@ -320,7 +348,8 @@ def _training_process(config,run_dir,cmd,env,replay_verified,telemetry):
     except ConfigError as e: failure = e.code
     result = json.loads(summary_path.read_text(encoding='utf-8')) if summary_path.exists() else {'trained':False}
     if failure or proc.returncode != 0: result = dict(result,trained=False,status='failed',reason=failure or result.get('reason','worker_failed'))
-    result.update(peak_ram_bytes=peak_ram,peak_vram_bytes=peak_vram,elapsed_seconds=time.monotonic()-start,
+    if monitor_failure is not None: result['monitor_failure']=monitor_failure
+    result.update(worker_returncode=proc.returncode,peak_ram_bytes=peak_ram,peak_vram_bytes=peak_vram,elapsed_seconds=time.monotonic()-start,
                   code_revision=c['code_revision'],source_commit=c['source_commit'],model_revision=c['model_revision'],seed=c['seed'],
                   training_scope='head_only' if c['training']['freeze_encoder'] else 'encoder_and_head',
                   optimizer_updates_observed=result.get('optimizer_updates_observed'),
@@ -493,7 +522,8 @@ def _worker_limits(config,run_dir):
                 if reason is None and current is not None and current.failed.is_set(): reason='telemetry_unavailable'
                 if reason:
                     _stop_owned(run_dir,observations,reason,trigger)
-            except Exception:
+            except Exception as e:
+                observations['monitor_failure']=getattr(e,'monitor_detail',None) or dict(failure_kind=e.code if isinstance(e,ConfigError) else 'unexpected_monitor_error',exception_type=type(e).__name__)
                 _stop_owned(run_dir,observations,'resource_monitor_unavailable')
     # 시작 전에 monitor 가용성을 확인한다.
     _memory(os.getpid())

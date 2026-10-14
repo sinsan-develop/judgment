@@ -1,5 +1,12 @@
 # judgment 작업현황
 
+## 2026-10-14 memory_monitor_unavailable 직접 원인·감시 단독 검증 / 담당 어울
+
+- 직접 승인:추가학습0/기존로그·코드진단/최소수정/모델없는94초초과감시/감시실패시own실험만종료검증. GPU감시유지/6GiB유지/다른서비스변경0/final-test열기0.
+- 조사:PCWSL RAM감시는명령이아닌/proc/status직접읽기. 읽기OS오류·VmRSS누락을동일ConfigError로축약했고숫자해석오류는ValueError로별도노출되는기존경로. 이번코드는ConfigError기록이므로감시명령실패·timeout·숫자해석오류증거없음. GPUproducer로그0bytes/실험중단뒤계수이력계속. 읽기실패와항목누락중정확한하위원인은기록없어미확인. worker.wait반환값을결과/파일에저장하지않은누락확인.
+- 최소수정:TDD종료코드/감시failure상세미기록2실패→코드수정. 원문없이failure_kind/errno/PID/안전State기록,worker종료코드별도bounded파일+evidence,종료직후/proc조회경합은poll로분리. 종료전기록은기존best-effort유지,쓰기때문에중단지연없음. 변경src/judgment/runner.py/tests/test_memory_monitor.py.
+- 계획자원:PCWSL .work/pcwsl-runtime/monitor-diagnostic-20261014-01의호스트CIMproducer1개/180초dummyworker1개/실패시험dummy와unrelated대조sleep. 모델·torch·GPUcontext·port·container·다운로드없음. 현지합성임시폴더·private로그만저장,시험후이번producer/child만종료잔류확인. canonicalsource는안전commit/push→PCWSL exactSHA로전달. 기존학습자원상한/조건변경없음. 다음은영향시험→현지180초+분류/종료격리시험→보고이며재학습없음.
+
 ## 2026-10-14 기존 조건 A/B 재실행1회 승인 / 담당 어울
 
 - 최종판정:승인1회소진/A실패/B미시작/비교미산출. 실행SHA262cfada722a1c7166ac4850c8d9ea4d7307e039, trial approved-retry-20261014-01. 직전baseline0.7083GiB<6GiB로시작,worker 약94.02초 memory_monitor_unavailable. 마지막durable단계dry_run/완료optimizer0/not_started,기록age5.35초로정확한종료순간갱신수미확인. 자동재시도0.
