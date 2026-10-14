@@ -1,5 +1,11 @@
 # judgment 작업현황
 
+## 2026-10-14 통일된 child A/B1회·합산1800초 직접 승인 / 담당 어울
+
+- 직접승인:사전검사통과동일image·/opt/venv/bin/python·/workspace·src+고정upstream/sharedworker로A-B1회. fresh3전체≤2.75·6GiB감시/1800초는A+B평가·재검사합친전체한도,arm별재설정하지않음. A정상88·측정완료→자원allocated/reserved/activeworker0→새fresh3≤2.75후동일초기B. 실패시자동재시도0·마지막단계·완료저장수/정확최종확인여부·원인traceback현지보존. final-test0·타서비스종료0·기존학습설정/각697노출88/B280선별49잠정수정/ID그룹고정순서유지.
+- trial approved-unified-worker-ab-20261014-01/owncontainer+producer각1·기존networknone/RAM4+총RAMswap8/GPU연결. 코드변경0·사전모델시험반복0. 전체run overall_start/remaining_trial_seconds/독립globalguard기존1800유지,outercontainerdeadline도producer시작부터1800남은시간으로제한. 안전문서checkpointpush→PCWSLexactSHA→여유표본후승인실제1회→이번자원만정리·원본/초기hash보존·근거보고.역복사0.
+
+
 ## 2026-10-14 A/B 공통 child 환경·traceback 보존·사전 모델 로드 / 담당 어울
 
 - 최종사전PASS:sourcef50e0210091847691ac2e66b3614d5f78377793b/실제ABlauncher precheck→같은run_training/child _train-worker. fresh3각2.724380GiB≤2.75/worker60.514초exit0·전체84.040초parent/producerexit0/64GPU표본최대간격4.821초·producer오류0. runtime /opt/venv/bin/python·cwd/workspace·PYTHONPATHsrc+고정upstream·Python3.12.3/laya0.4.6/sourcec73908d clean·model_load검증. 자체peakallocated1307833856/reserved1333788672bytes/host4.054146GiB<6. worker_precheck_complete/optimizer0·trainedfalse/최소fatal0·일반delay1비치명/출력traceback합성4PASS(실제모델오류발생0)/전체128중124PASS4조건skip. logger긴줄4096생략도보존모드해제.
