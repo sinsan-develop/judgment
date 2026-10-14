@@ -1,8 +1,39 @@
 # 승인된 A/B 비교 실행 기록 — A 중단·B 미시작
 
-2026-10-14 / 담당 어울 / **최신 승인 재실행: A worker telemetry_unavailable/exit3, B 미시작, 비교 결과 미산출**
+2026-10-14 / 담당 어울 / **최신 승인 시도: A 기록 대기 초과/exit3, B 미시작, 비교 결과 미산출**
 
-## 최신 판정 — 수정 감시 코드 승인 재실행 1회
+## 최신 판정 — 독립 오류 로그 적용 승인 A/B 1회
+
+시도 `approved-independent-log-ab-20261014-01`, 소스 `acabafb8b31e51d6d4639d25b295d91f844d0a35`. 기존 검증된 코드를 바꾸거나 모델 로드 시험을 반복하지 않고 승인된 실제 비교1회만 실행했다. 시작 전체 GPU **0.8296GiB≤6GiB**, 동일 초기 가중치·학습 설정·각697노출/88갱신 계획·총1800초를 유지했다. **A parent 관측69.858초에 실패, B 미시작, 비교 결과 없음, 자동 재시도0**이다.
+
+독립 최소 오류 로그는 최초 실패를 다음과 같이 보존했다.
+
+| 항목 | 저장 값 |
+|---|---|
+| 실패 호출·코드 | `submit.wait_timeout` — `Telemetry._submit()`의 완료 event 대기 |
+| 오류 분류 | `TimeoutError`; 실제 caller에는 `ConfigError(telemetry_unavailable)`로 전달 |
+| 당시 writer 진행 호출 | `writer.atomic_json` |
+| 단계 | `model_load` |
+| 저장 완료 optimizer | **0회** |
+| OS errno/예외 호출 stack | 없음; OS 예외가 아니라 1초 완료 대기 초과로 직접 분류 |
+
+정확히 확인된 직접 원인은 **기록 요청의 완료 event가 기존1초 제한 안에 설정되지 않은 것**이다. 당시 writer가 `atomic_json()`을 처리 중이었다. 이 함수의 JSON 직렬화·flush·fsync·replace 중 어느 작업이 지연됐는지, 저장 장치/스케줄링/모델 import 중 어느 요인이 기여했는지는 기록되지 않아 미확인이다. 디스크 오류나 GPU 오류로 단정하지 않는다. `TimeoutError`는 최소 로그의 진단 분류이며 실제 OS가 던진 예외를 발견했다는 의미가 아니다.
+
+worker의 독립 guard가 `telemetry_unavailable`을 감지해 **종료 코드3**으로 스스로 중단했다. parent 종료 요청은 `false`이고 결과의 `worker_failed`는 이 worker 종료의 요약이다. 이번 `/proc` 실패는 없었다. worker guard 경과65.981초, 마지막 단계 `model_load`, optimizer `not_started`, 마지막 progress age 약2.495초다. **정확한 종료 순간 optimizer 횟수는 미확인**이며 저장 완료0회와 구분한다. 모델 로드 완료 기록·학습·reload·평가는 없다.
+
+| 자원 | 관측 |
+|---|---:|
+| 전체 host GPU 표본 피크 | **891,256,832bytes ≈0.830GiB**, 6GiB 이하 |
+| parent+worker RAM 표본 피크 | 1,452,101,632bytes |
+| 마지막 worker 자체 RSS | 1,084,428,288bytes |
+| 마지막 worker GPU allocator | `not_initialized`, allocated/reserved 값 없음 |
+| 저장 표본 | 17,968,241,111bytes, 30GiB 이하 |
+
+마지막 유효 snapshot의 adapter 계수행별 적용값은831,488 /30,343,168 /859,549,696bytes다. 각 `max(DedicatedUsage+SharedUsage, TotalCommitted)`이며 다른 작업/committed도 포함한다. 실험 자체 VRAM이나 마지막 snapshot을 표본 피크와 동일한 값으로 해석하지 않는다.
+
+원본8파일·초기 가중치 hash 불변, final-test 내용/hash 비접근을 확인했다. calibration/selection 평가까지 도달하지 못했으므로 자료 선별·잠정 정답 수정·반복 노출의 합친 효과를 측정하지 못했다. 해당 container와 producer PID8338 잔류0/producer exit0을 확인했다. 다른 서비스·driver·한도·학습 설정 변경, Windows 비공개 역복사는 없다. PCWSL trial에 `interrupted.summary.private.json`과 연결 worker의 독립 오류 로그·종료/단계 기록을 보존했다. 승인 학습1회는 소진됐으며 중단 후 추가 수정·학습은 수행하지 않는다.
+
+## 이전 시도 — 수정 감시 코드 승인 재실행 1회
 
 시도 `approved-monitor-retry-20261014-01`, 실행 소스 `d0d5b876ed2c714d985c7668e1adb13948a10420`. 현지 사전 시험은 최초 dummy 종료 타이밍 때문에 의도한 조회 경합이 발생하지 않아 1개 실패했다. 실제 학습은 시작하지 않은 상태에서 시험을 release 파일·실제 wait로 동기화했다. 이후 현지 4개 시험 PASS/장시간 시험1개 skip 확인 후 승인된 실제 A/B 1회를 실행했다. 이전 180초 검증을 반복하거나 학습을 자동 재시도하지 않았다.
 

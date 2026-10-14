@@ -2,6 +2,8 @@
 
 ## 2026-10-14 독립 오류 로그 적용 A/B 비교1회 승인 / 담당 어울
 
+- 종료판정:sourceacabafb8b31e51d6d4639d25b295d91f844d0a35/A parent69.858초실패/B미시작/비교미산출/자동재시도0. 독립최초오류 submit.wait_timeout/진단TimeoutError/단계model_load/완료optimizer0/inflight writer.atomic_json. 정상기록기존1초대기내done미설정확인,atomic내부지연작업·기여원인미확인. worker guard65.981초 telemetry_unavailable→자체exit3,parent termination_requestedfalse/proc오류0. 마지막progressage2.495초/not_started/정확최종optimizer수미확인.
+- 자원/보존:baseline0.8296GiB/hostGPUpeak891256832bytes(0.830GiB)<6,parent+workerRAMpeak1452101632bytes/workerRSS1084428288bytes/자체GPU미초기화,disk17968241111bytes<30GiB. 원본8파일·초기가중치hash불변/final-test내용·hash열기0/평가미실행. owncontainer·producerPID8338잔류0/producer exit0/다른서비스변경0/역복사0. 현지trial interrupted.summary.private.json·독립오류/종료/단계보존,공개보고 docs/AB_COMPARISON_RESULT.md갱신. 승인1회소진/추가수정·학습0,다음은공개기록checkpoint후실패원인및미확인보고.
 - 직접승인:기존설정/동일초기가중치/GPU6GiB/전체1800초/A정상완료후B/calibration·selection평가/final-test비접근/실패자동재시도0. trial approved-independent-log-ab-20261014-01,이전실패 namespace보존/고정697노출·88optimizer/선별280·잠정정답49유지.
 - 검증된코드a0dd121의독립최소로그/감시·중단을그대로사용,코드·설정수정0. 모델로드단독및합성시험반복0. 이번기록checkpoint exactSHA를PCWSLGit으로동기화/원본입력·가중치고정검사/시작GPU≤6→승인실제1회.
 - 계획자원:judgment-ab-independent-log-20261014-01 owncontainer1개(기존immutable image/networknone/RAM4GiB+총RAMswap8GiB/GPU연결)와ownCIMproducer1개. 전체1800초독립guard/기존RAM24·disk30GiB/GPU6유지. 이번자원만종료/기존서비스변경0/private로그현지보존/역복사0. 실패시독립오류로그·마지막단계·저장optimizer수·종료코드·자원집계보고.
