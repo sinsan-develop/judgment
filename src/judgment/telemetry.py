@@ -135,11 +135,38 @@ class Telemetry:
             completed_optimizer_updates=0,optimizer_state='not_started',stage='started')
         self.thread=threading.Thread(target=self._writer,daemon=True)
         self.sampler=threading.Thread(target=self._sample,daemon=True)
+        self.failure_once=threading.Lock();self.failure_record=None;self.failure_fd=None;self.inflight_operation=None
+
+    def fail(self,operation,error=None):
+        self.failed.set()  # 별도 로그 I/O를 기다리며 중단을 늦추지 않는다.
+        with self.failure_once:
+            if self.failure_record is not None:return
+            row=dict(operation=operation,exception_type=type(error).__name__ if error else 'TimeoutError' if operation=='submit.wait_timeout' else 'ConfigError',
+                errno=getattr(error,'errno',None),error_code=operation,stage=self.state.get('stage'),
+                sampled_epoch=time.time(),pid=os.getpid(),inflight_operation=self.inflight_operation,
+                completed_optimizer_updates=self.state.get('completed_optimizer_updates'))
+            frames=[];tb=getattr(error,'__traceback__',None)
+            while tb is not None:
+                frames.append(tb.tb_frame.f_code.co_name);tb=tb.tb_next
+            row['exception_calls']=frames[-8:]  # 원문·locals·경로·예외 message 없음.
+            self.failure_record=row
+            payload=(json.dumps(row,ensure_ascii=True)+'\n').encode()
+            fd=self.failure_fd
+        def write():
+            try:
+                if fd is not None:os.write(fd,payload)
+            except OSError:pass
+            finally:
+                if fd is not None:
+                    try:os.close(fd)
+                    except OSError:pass
+                self.failure_fd=None
+        emergency=threading.Thread(target=write,daemon=True);emergency.start();emergency.join(.02)
 
     def _sample(self):
         while not self.stop_sampling.wait(.5):
             try: self.event(None,event='heartbeat')
-            except Exception: self.failed.set();return
+            except Exception as e:self.fail('sampler.event',e);return
 
     def _writer(self):
         while True:
@@ -147,24 +174,29 @@ class Telemetry:
             if item is None: return
             kind,value,done=item
             try:
+                self.inflight_operation='writer.append_json'
                 if kind=='output': append_json(self.folder/'worker.output.private.jsonl',value)
                 else:
                     append_json(self.folder/(self.role+'.events.private.jsonl'),value)
+                    self.inflight_operation='writer.atomic_json'
                     atomic_json(self.folder/(self.role+'.progress.private.json'),value)
-            except Exception: self.failed.set()
-            finally: done.set()
+            except Exception as e:self.fail(self.inflight_operation,e)
+            finally:self.inflight_operation=None;done.set()
 
     def _submit(self,kind,value,*,wait=True):
         if self.failed.is_set(): raise ConfigError('telemetry_unavailable')
         done=threading.Event()
         try: self.queue.put_nowait((kind,value,done))
         except queue.Full:
-            self.failed.set();raise ConfigError('telemetry_unavailable') from None
-        if wait and (not done.wait(self.timeout) or self.failed.is_set()):
-            self.failed.set();raise ConfigError('telemetry_unavailable')
+            self.fail('submit.queue_full');raise ConfigError('telemetry_unavailable') from None
+        if wait:
+            if not done.wait(self.timeout):
+                self.fail('submit.wait_timeout');raise ConfigError('telemetry_unavailable')
+            if self.failed.is_set():raise ConfigError('telemetry_unavailable')
 
     def event(self,stage,*,event='state',position=None,error_type=None):
-        memory=self.memory()
+        try:memory=self.memory()
+        except Exception as e:self.fail('event.memory',e);raise
         if event=='heartbeat' and self.stop_sampling.is_set(): return
         with self.lock:
             self.state.update(stage=stage or self.state['stage'],event=event,sequence=self.state['sequence']+1,
@@ -198,11 +230,13 @@ class Telemetry:
 
     def __enter__(self):
         self.folder.mkdir(exist_ok=True)
+        self.failure_fd=os.open(self.folder/'telemetry.failure.min.private.jsonl',os.O_WRONLY|os.O_CREAT|os.O_APPEND,0o600)
         self.thread.start()
         try: self.event('started')
         except BaseException:
             try: self.queue.put_nowait(None)
             except queue.Full: pass
+            # 실패 진단 daemon과 writer가 종료 전에 FD를 사용한다. process 종료로 회수한다.
             raise
         _ACTIVE.append(self);self.sampler.start();return self
 
@@ -210,8 +244,10 @@ class Telemetry:
         if self in _ACTIVE: _ACTIVE.remove(self)
         self.stop_sampling.set();self.sampler.join(self.timeout)
         try: self.queue.put_nowait(None)
-        except queue.Full: self.failed.set()
+        except queue.Full:self.fail('close.queue_full')
         self.thread.join(self.timeout)
+        if self.thread.is_alive() or self.sampler.is_alive():self.fail('close.thread_timeout')
+        if self.failure_record is None and self.failure_fd is not None:os.close(self.failure_fd);self.failure_fd=None
         if exc_type is None and (self.thread.is_alive() or self.sampler.is_alive() or self.failed.is_set()): raise ConfigError('telemetry_unavailable')
 
 
@@ -228,7 +264,7 @@ def drain_output(pipe,telemetry,stream):
                 if len(buffered)>4096:
                     telemetry.output(stream,'');buffered=b''
             if buffered: telemetry.output(stream,buffered.decode('utf-8',errors='replace'))
-        except Exception: telemetry.failed.set()
+        except Exception as e:telemetry.fail('drain_output',e)
         finally: pipe.close()
     thread=threading.Thread(target=read,daemon=True);thread.start();return thread
 

@@ -1,5 +1,11 @@
 # judgment 작업현황
 
+## 2026-10-14 telemetry 실패 원인·모델 로드 전용 재현 / 담당 어울
+
+- 직접승인:A/B보류/정확한기록실패호출진단/독립최소로그/실제모델로드까지만재현/GPU6GiB·기존시간·중단유지. 기존로그하위원인없어소급확정불가,새instrumented재현으로확인.
+- TDD:독립writer예외/대기시간초과진단2시험RED→보완. telemetry.fail은실패flag먼저설정,별도preopen0600FD에원문없이operation/type/errno/stage/inflight/완료수1행,기존queue·fsync·atomic경로미사용/daemon최대20ms대기/쓰기불가시best-effort. writer append/atomic·submit대기/queue·sampler/event memory/drain/close지점분리. 기본1초정상기록상한변경0.
+- 자원계획:PCWSL model-load-probe-20261014-01 owncontainer1개/ownCIMproducer1개,기존image/networknone/RAM4g+총RAMswap8g/GPUreadonly연결. ignored .work/model_load_probe/승인probe namespace에private기록,학습자료·optimizer·평가·final-test읽기0. 동일초기가중치로드후해제/해당자원만정리. source안전commit→Git exactSHA→합성gate→모델로드전용재현→원인별최소보완이필요하면별도검증,정상완료뒤에만A/B제안.
+
 ## 2026-10-14 수정 감시 코드 A/B 재실행1회 승인 / 담당 어울
 
 - 종료판정:source d0d5b876ed2c714d985c7668e1adb13948a10420 현지gate4PASS/장시간1skip뒤승인학습1회실행. baseline0.8677GiB≤6. A parent3.735초/workerguard1.762초 telemetry_unavailable로worker자체exit3,parent termination_requestedfalse/요약worker_failed. /proc오류0/상태분류packet발생없음. 마지막model_load/완료optimizer0/not_started/recordage1.228초/정확한종료수미확인. B미시작/평가미실행/비교미산출/자동재시도0.
