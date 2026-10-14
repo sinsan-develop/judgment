@@ -2,6 +2,9 @@
 
 ## 2026-10-14 학습 전 선택 평가 최소 메모리 보완·피크 측정 / 담당 어울
 
+- 최종실측:sourcefc0eb0e exactSHA/probe preselection-memory-20261014-01/시작3표본각2.525337GiB→전체70.185초exit0/실제평가13.220초selection374 skip0/원래16padding의GPU2행vs보완1행16건대조maxabs0/top동일/finiteCPU374/원본입력·초기가중치hash불변. peakallocated1479220224bytes(1.378GiB)/reserved1614807040(1.504GiB)/host4641357824(4.322601GiB)<6/시작대비추가1.797264GiB. 학습·optimizer·A-B·final-test0.
+- 종료예외:worker fatal/delay0/평가후producer snapshot_recording_failed exit1. lastGPUsnapshot은평가exit+1.287초/summary뒤,오류로그는그뒤4.071초에발생, 평가중관측단절아님. 세부쓰기예외vs1초대기미구분, 숨기지않고docs/PRESELECTION_MEMORY_VERIFICATION.md보고. producerPID13429·owncontainer잔류0/upstreamclean/private현지보존/역복사0/타프로그램종료0.
+- 검증/제안:Windows전체118중114PASS4조건skip/독립리뷰1회C0I0M0. max(추가1.797264,reserved1.503906)+여유1GiB→6-2.797264=3.202736를내림해fresh3GPU≤3GiB시작/A정상후B/같은초기·설정697노출88·총1800초·6GiB·calibration/selection·final-test0·재시도0의A-B1회제안만. 전체학습피크/reload/완료미검증/별도승인전실행0.
 - 직접승인:before_training_selection배치/추론/결과보관진단·자료/입력/점수계산유지·최소보완후학습전평가만피크측정·실측+여유로A/B제안. GPU6GiB·타프로그램임의종료금지/final-test0/실제학습0.
 - 고정upstream c73908d calibration_records 기본16·@torch.no_grad/model.eval/ampFalse, logits매batch.cpu().numpy()→recordsCPU, GPU결과누적아님. batch16일시activation/caching이자체reserved4.008GiB에기여한경로확인. upstream파일수정0.
 - 최소보완:원래16collate/padding/후보·입력토큰·target유지하고동일_forward를GPU1행씩실행, CPU에서cat. 평가함수호출동안만_forwardhook/예외finally복구/학습_forward는원본, 전후평가동일경로. TDD미구현RED→기본2PASS/실제meta list구조RED→tensor/list행slice보완2PASS.
