@@ -2,6 +2,9 @@
 
 ## 2026-10-14 A checkpoint 평가·B1회 저장fp16 대칭 비교 1230초 직접승인 / 담당 어울
 
+- 미시작판정:source1592749/namespace approved-checkpoint-followup-20261014-01/시작30초20fresh표본min5.244770/max5.262836GiB/≤2.75표본0·3연속실패/headroom_unavailable. 전체30.552초producerexit0·오류0/launcherparentexitnull·컨테이너시작0·trial폴더미생성/Astrict로드·평가0/A재학습0/B학습평가0/비교없음. A원본checkpoint SHA불변/producer23676잔류0·다른서비스중지0·final-test열기0·자동재시도0. 실제모델시도시작전조건부족으로정지이며학습실패/strict로드실패로표현하지않음.
+- 검증/보존:새2시험RED→PASS/startgate2PASS/전체132중128PASS4조건skip. 현지20표본·not-started.summary/runtime.summary보존·공개docs/FP16_FOLLOWUP_EXECUTION_RESULT.md. 합산1230중이번시작확인30.552초차감후같은승인잔여1199.448초/다음직접재개시deadline에반영. 실제strictload·A평가·B학습·저장비교미검증/자동재시작0.
+
 - 직접승인:보존A checkpoint 재학습0/엄격FP16파일·170tensor/실제strictload검사후calibrationselection평가→측정child정상종료·allocated/reserved/activeworkers0→fresh3전체≤2.75후B동일초기1회697노출88·기존학습설정→B도F16저장strictreload로동일평가비교. 후속전체1230초단일deadline·6GiB감시·final-test0/실패즉시중단·자동재시도0/승인범위비교까지실행.
 - 구현:기존ABlauncher followup/stored-measure modes·공통interpreter/cwd/module/worker_process/adapter/evaluation함수 재사용. A원본checkpoint SHA고정 ecb8e4/초기SHA9d628f/epochexit88·학습설정일치·encoder불변검사/복사본에파생provenance추가·원본불변. 각stored-measure는FP16전체finite·구조검사→strict state_dict로드후tensor재half값digest전수일치·같은보정/자료. CPU-FP16byte비교·공통1230deadline2RED→2PASS/startgate2PASS. 부모GPUcontext없음/measurechild종료로해제·B만run_training호출. trial approved-checkpoint-followup-20261014-01/owncontainer+producer각1/기존image·networknone·RAM4+총RAMswap8·GPU6/안전commitpush→exactSHA→freshgate→단일실행→보존report. 추가모델시험반복0.
 
