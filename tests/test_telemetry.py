@@ -260,7 +260,7 @@ def gpu(p):
     return 6*1024**3+1
 r._gpu_memory=gpu
 r._storage_bytes=lambda c,p:100
-if sys.argv[2]=='hang': telemetry.atomic_json=lambda *a: time.sleep(20)
+if sys.argv[2]=='hang': telemetry.atomic_json=lambda *a,**kw: time.sleep(20)
 c=RunConfig({'device':'cuda','resources':{'time_limit_seconds':30,'ram_limit_bytes':1000,'vram_limit_bytes':6*1024**3,'disk_limit_bytes':1000}})
 with r._worker_limits(c,root): time.sleep(20)
 '''

@@ -30,7 +30,7 @@ def _stop_owned(run_dir,observations,reason,trigger=None):
     try:
         current=current_telemetry()
         progress_folder=current.folder if current is not None else run_dir
-        bounded_save(run_dir/'limit_failure.json',lambda:stop_evidence(progress_folder,dict(observations,reason=reason,trigger=trigger)))
+        bounded_save(run_dir/'limit_failure.json',lambda:stop_evidence(progress_folder,dict(observations,reason=reason,trigger=trigger)),publish_before_sync=True)
     finally:
         for child in tuple(_ACTIVE_WORKERS):
             try:
@@ -299,7 +299,7 @@ def _training_process(config,run_dir,cmd,env,replay_verified,telemetry):
         try:
             if failure:
                 bounded_save(run_dir/'limit_failure.json',lambda:stop_evidence(run_dir,dict(reason=failure,
-                    peak_ram_bytes=peak_ram,peak_vram_upper_bound_bytes=peak_vram,elapsed_seconds=time.monotonic()-start,trigger=trigger)))
+                    peak_ram_bytes=peak_ram,peak_vram_upper_bound_bytes=peak_vram,elapsed_seconds=time.monotonic()-start,trigger=trigger)),publish_before_sync=True)
         finally:
             if proc.poll() is None:
                 try: proc.terminate()

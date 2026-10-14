@@ -32,10 +32,10 @@ def main(output, stop_file):
         if isinstance(rows,dict): rows=[rows]
         value = dict(bytes_used=parse_adapter_memory(rows), sampled_epoch=time.time(),adapters=rows,
                      scope='windows_gpu_adapter_upper_bound', producer_pid=os.getpid())
-        if not bounded_save(output,value,timeout=.2): raise RuntimeError('snapshot_recording_failed')
+        if not bounded_save(output,value,timeout=1.): raise RuntimeError('snapshot_recording_failed')
         # 기록 I/O가 막히면 생산자는 종료하며 독립 guard가 stale snapshot을 거절한다.
         history=output.with_name(output.stem+'.history.private.jsonl')
-        if not bounded_call(lambda:append_json(history,value),timeout=.2):
+        if not bounded_call(lambda:append_json(history,value),timeout=1.):
             raise RuntimeError('history_recording_failed')
         time.sleep(.5)
 

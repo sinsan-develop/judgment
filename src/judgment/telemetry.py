@@ -18,14 +18,20 @@ def current_telemetry():
     return _ACTIVE[-1] if _ACTIVE else None
 
 
-def atomic_json(path, value):
+def atomic_json(path, value, *, publish_before_sync=False):
     path=Path(path)
     temporary=path.with_name(path.name+f'.tmp-{os.getpid()}-{threading.get_ident()}')
     try:
         fd=os.open(temporary,os.O_WRONLY|os.O_CREAT|os.O_TRUNC,0o600)
         with os.fdopen(fd,'w',encoding='utf-8') as stream:
-            json.dump(value,stream,ensure_ascii=True,allow_nan=False);stream.flush();os.fsync(stream.fileno())
+            json.dump(value,stream,ensure_ascii=True,allow_nan=False);stream.flush()
+            if not publish_before_sync: os.fsync(stream.fileno())
         os.replace(temporary,path)
+        if publish_before_sync:
+            # 중단 packet만 먼저 공개한다. sync 완료를 기다리느라 상한 종료를 늦추지 않는다.
+            fd=os.open(path,os.O_RDWR)
+            try: os.fsync(fd)
+            finally: os.close(fd)
     finally:
         try: temporary.unlink()
         except FileNotFoundError: pass
@@ -38,8 +44,12 @@ def append_json(path,value):
         stream.flush();os.fsync(stream.fileno())
 
 
-def bounded_save(path,value,*,timeout=.05):
-    return bounded_call(lambda:atomic_json(path,value() if callable(value) else value),timeout=timeout)
+def bounded_save(path,value,*,timeout=.05,publish_before_sync=False):
+    def write():
+        payload=value() if callable(value) else value
+        if publish_before_sync: atomic_json(path,payload,publish_before_sync=True)
+        else: atomic_json(path,payload)
+    return bounded_call(write,timeout=timeout)
 
 
 def bounded_call(operation,*,timeout=.05):
@@ -94,12 +104,12 @@ def gpu_baseline(snapshot_path,output):
         raise ConfigError('gpu_baseline_unavailable')
     if parse_adapter_memory(rows)!=snapshot['bytes_used']: raise ConfigError('gpu_baseline_unavailable')
     result=dict(captured_epoch=time.time(),scope='host_all_gpu_adapter_upper_bound',snapshot=snapshot)
-    if not bounded_save(output,result,timeout=.2): raise ConfigError('telemetry_unavailable')
+    if not bounded_save(output,result,timeout=1.): raise ConfigError('telemetry_unavailable')
     return result
 
 
 def stop_evidence(folder,observations):
-    result=dict(observations,exact_final_optimizer_updates=None)
+    result=dict(observations,exact_final_optimizer_updates=None,stop_record_durability='best_effort_before_forced_exit')
     for role in ('worker','parent'):
         try:
             path=Path(folder)/(role+'.progress.private.json')
@@ -112,7 +122,7 @@ def stop_evidence(folder,observations):
 
 
 class Telemetry:
-    def __init__(self,folder,*,role,arm=None,memory=None,timeout=.2):
+    def __init__(self,folder,*,role,arm=None,memory=None,timeout=1.):
         self.folder=Path(folder);self.role=role;self.timeout=timeout
         if memory is None:
             def memory():
