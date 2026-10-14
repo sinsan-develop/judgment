@@ -2,6 +2,9 @@
 
 ## 2026-10-14 telemetry 실패 원인·모델 로드 전용 재현 / 담당 어울
 
+- 검증판정:source8a29cae exactSHA/모델로드전용probe model-load-probe-20261014-01 정상60.111초 exit0/최종model_load_verified/optimizer0. 초기화전GPU not_initialized·RSS745525248bytes,로드후allocated1307824640/reserved1333788672·RSS1696055296bytes;해제후allocator0. 최소실패로그0행/기존실패재현안됨으로정확한이전호출·예외미확인,근본해결확정0. 실제학습·평가·final-test열기0.
+- 최종보존:producer49표본/hostGPUpeak2336632832bytes(2.176GiB)<6/기준0.866GiB,producerPID7581및owncontainer잔류0/최소로그0600/초기가중치hash불변. verified.summary.private.json 현지보존,역복사0.
+- 시험/오류:독립로그2RED→보완뒤writer PermissionError/errno13·submit timeout 분류확인. 최초보완FD회수누락으로Windows정리오류3개→기록후close/최대20ms완료대기로해결,영향20PASS/1skip·전체112중108PASS/4조건skip,현지2PASS. 이번probe container/producer종료/비공개현지기록유지·초기가중치보존검사. 공개보고 docs/TELEMETRY_MODEL_LOAD_VERIFICATION.md. 정상로드·기록확인뒤동일조건A/B1회제안만하며별도승인전학습0.
 - 직접승인:A/B보류/정확한기록실패호출진단/독립최소로그/실제모델로드까지만재현/GPU6GiB·기존시간·중단유지. 기존로그하위원인없어소급확정불가,새instrumented재현으로확인.
 - TDD:독립writer예외/대기시간초과진단2시험RED→보완. telemetry.fail은실패flag먼저설정,별도preopen0600FD에원문없이operation/type/errno/stage/inflight/완료수1행,기존queue·fsync·atomic경로미사용/daemon최대20ms대기/쓰기불가시best-effort. writer append/atomic·submit대기/queue·sampler/event memory/drain/close지점분리. 기본1초정상기록상한변경0.
 - 자원계획:PCWSL model-load-probe-20261014-01 owncontainer1개/ownCIMproducer1개,기존image/networknone/RAM4g+총RAMswap8g/GPUreadonly연결. ignored .work/model_load_probe/승인probe namespace에private기록,학습자료·optimizer·평가·final-test읽기0. 동일초기가중치로드후해제/해당자원만정리. source안전commit→Git exactSHA→합성gate→모델로드전용재현→원인별최소보완이필요하면별도검증,정상완료뒤에만A/B제안.
