@@ -149,7 +149,7 @@ print('PRIVATE_UTTERANCE secret',file=sys.stderr)
         def load(): calls.append('load')
         def scores(): calls.append('scores')
         def train(): raise RuntimeError('synthetic secret')
-        module=types.SimpleNamespace(load_checkpoint=load,calibration_records=scores,train_model=train)
+        module=types.SimpleNamespace(load_checkpoint=load,calibration_records=scores,train_model=train,_forward=lambda *a,**k:None)
         with tempfile.TemporaryDirectory(dir=TEST_TMP) as temporary:
             with Telemetry(Path(temporary),role='worker',memory=lambda:{}) as t:
                 with self.assertRaises(RuntimeError), observe_upstream_stages(t,module=module):

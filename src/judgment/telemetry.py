@@ -336,7 +336,9 @@ def observe_upstream_stages(telemetry,*,module=None):
         with telemetry.phase('finetune_model_load'): return originals['load_checkpoint'](*args,**kwargs)
     def scores(*args,**kwargs):
         stage='after_training_evaluation' if trained['entered'] else 'before_training_selection'
-        with telemetry.phase(stage): return originals['calibration_records'](*args,**kwargs)
+        from .evaluation_memory import bounded_evaluation_forward
+        with telemetry.phase(stage),bounded_evaluation_forward(module):
+            return originals['calibration_records'](*args,**kwargs)
     def train(*args,**kwargs):
         trained['entered']=True
         with telemetry.phase('train_model'): return originals['train_model'](*args,**kwargs)

@@ -1,5 +1,12 @@
 # judgment 작업현황
 
+## 2026-10-14 학습 전 선택 평가 최소 메모리 보완·피크 측정 / 담당 어울
+
+- 직접승인:before_training_selection배치/추론/결과보관진단·자료/입력/점수계산유지·최소보완후학습전평가만피크측정·실측+여유로A/B제안. GPU6GiB·타프로그램임의종료금지/final-test0/실제학습0.
+- 고정upstream c73908d calibration_records 기본16·@torch.no_grad/model.eval/ampFalse, logits매batch.cpu().numpy()→recordsCPU, GPU결과누적아님. batch16일시activation/caching이자체reserved4.008GiB에기여한경로확인. upstream파일수정0.
+- 최소보완:원래16collate/padding/후보·입력토큰·target유지하고동일_forward를GPU1행씩실행, CPU에서cat. 평가함수호출동안만_forwardhook/예외finally복구/학습_forward는원본, 전후평가동일경로. TDD미구현RED→기본2PASS/실제meta list구조RED→tensor/list행slice보완2PASS.
+- 자원계획:preselection-memory-20261014-01 ownCIMproducer+container(기존image/networknone/RAM4+총RAMswap8/GPU6·총1800초guard). fresh3GPU≤3GiB시작, 초기모델로드+선택374평가만/optimizer·train·final-test0. 원래16패딩텐서로GPU2행기준 vs 1행16개점수수치1e-5·top대조후전체평가, payload/scores/meta는private현지보존/역복사0. 실제피크와현재baseline으로안전여유있는시작조건·A/B제안만, 자원은이번것만정리.
+
 ## 2026-10-14 공동 검증 여유 기준 A/B 1회 승인 / 담당 어울
 
 - 종료판정:source17b79ff88707c23715718f36e8ef6d0b8029a89b/fresh3GPU표본모두2.5528946GiB≤4후승인실제1회실행. A75.971초vram_limit/hostpeak7383695360bytes(6.877GiB)>6/workerexit3/B미시작/비교미산출/자동재시도0. 마지막before_training_selection·완료optimizer0/not_started/recordage2.649초/정확종료수미확인.
