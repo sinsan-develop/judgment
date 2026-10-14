@@ -1,5 +1,12 @@
 # judgment 작업현황
 
+## 2026-10-14 GPU 기여 대조·모델 로드80기록 공동 검증 / 담당 어울
+
+- 직접승인:기존동시점allocator/adapter대조·다른작업이면프로그램식별/자체증가면단계보고·서비스추측종료/상한완화금지·GPU여유확인후모델로드80기록만/A-B보류/final-test0.
+- 로그대조:첫capstop(snapshot/worker차0.043초)실험allocator not_initialized/host6.164GiB,주adaptercommitted2.746→6.134GiB. 최종capstop(차0.050초)baseline5.778GiB/host6.267GiB/실험model_load allocated=reserved786432000bytes(750MiB),직전초기화/장치이동확인. allocator와전체resident·committed범위달라직접차감하지않음. 중단시점process PID계수없어프로그램확정불가.
+- 현재read-only CIM adapter계수약2.34GiB/응용GPU process Chrome·Steamwebhelper·Whale등확인,명령행·원문조회0. dwm process Dedicated값이전체adapter Dedicated보다커process합산으로과거원인단정0/프로그램종료0.
+- 자원계획:gpu-headroom-joint-20261014-01 owncontainer+CIMproducer/검증된기존image·학습설정불변·networknone/RAM4+총RAMswap8/GPU6GiB·총1800초감시. 정상모델로드allocator약1.24GiB관측을근거로시작host≤4GiB의3개연속fresh표본에서최소2GiB여유확인후모델로드+80회기록1회만,optimizer·학습·평가0. 해당자원만정리/private현지기록/역복사0/통과전A-B0.
+
 ## 2026-10-14 atomic_json 지연 계측·최소 보완 / 담당 어울
 
 - 최종판정:현지 ea17e36 모델없는안전5시험2.085초전부PASS/실제worker종료·unrelated생존확인. 일반delay경고뒤계속하다실제hostGPU6.267GiB에서중단,모델로드+지정80회공동검증미완료. 계속A/B보류/추가모델시도0,가용GPU여유에서공동재검증필요. 원본초기가중치hash불변/producer9362·9818·10248잔류0/owncontainer잔류0/private현지보존. 공개보고 docs/ATOMIC_WRITER_DIAGNOSIS.md에계측전후·한계·미검증기록.
