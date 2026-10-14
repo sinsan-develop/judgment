@@ -11,10 +11,14 @@ def main():
     parser = argparse.ArgumentParser(description='judgment 무다운로드 검증 CLI')
     parser.add_argument('command',choices=('preflight','train','evaluate','_train-worker'))
     parser.add_argument('--config',type=Path,required=True)
+    parser.add_argument('--precheck-only',action='store_true')
     args = parser.parse_args()
+    if args.precheck_only and args.command!='_train-worker':parser.error('--precheck-only requires _train-worker')
+    # 실제 child 예외는 traceback을 stderr로 전달하고 parent가 비밀값만 가린다.
+    if args.command=='_train-worker':
+        result=training_worker(args.config,precheck_only=args.precheck_only)
+        return 0 if result.get('trained') or result.get('status')=='worker_precheck_verified' else 2
     try:
-        if args.command == '_train-worker':
-            result=training_worker(args.config);return 0 if result.get('trained') else 2
         payload = json.loads(args.config.read_text(encoding='utf-8'))
         config = validate_run_config(payload,real=payload.get('mode') == 'real')
         if args.command == 'preflight': result = preflight(config).values

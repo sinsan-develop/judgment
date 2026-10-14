@@ -252,6 +252,23 @@ def wait_start_samples(snapshot, *, timeout=30., limit=int(2.75*1024**3)):
     raise ValueError('start_headroom_unavailable')
 
 
+def precheck(root):
+    from judgment.runner import run_training,_worker_limits
+    from judgment.data import load_real_bundle
+    from judgment.replay import install_final_test_guard
+    folder=root/'.work/ab_comparison'
+    config=arm_config(root,folder,'A',load(folder/'preparation.private.json'))
+    install_final_test_guard(config)
+    samples=wait_start_samples(config.values['resources']['gpu_memory_snapshot_path'])
+    with _worker_limits(config,folder):
+        result=run_training(config,load_real_bundle(config,roles=('train','selection')),precheck_only=True).values
+    if result.get('status')!='worker_precheck_verified' or result.get('worker_returncode')!=0:
+        raise ValueError('worker_precheck_failed')
+    save(folder/'worker-precheck.latest.private.json',dict(result,start_samples=samples))
+    print(json.dumps({'stage':'worker_precheck_complete','runtime':result['runtime'],'run_dir':result['run_dir'],
+                      'optimizer_updates':0,'final_test_opened':False}),flush=True)
+
+
 def run(root,*,trial_id=None):
     from judgment.contracts import RunConfig
     from judgment.replay import install_final_test_guard, validate_replay_files, remaining_trial_seconds
@@ -332,7 +349,7 @@ def run(root,*,trial_id=None):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('command', choices=('prepare', 'run'))
+    parser.add_argument('command', choices=('prepare', 'precheck', 'run'))
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--trial-id',help='별도로 승인한 단일 재시도의 새 보존 이름; 기존 증거 재사용/덮어쓰기 금지')
     args = parser.parse_args()
@@ -342,4 +359,7 @@ if __name__ == '__main__':
     if args.command=='prepare':
         if args.trial_id: parser.error('trial-id is for approved run only')
         prepare(root)
+    elif args.command=='precheck':
+        if args.trial_id:parser.error('trial-id is for approved run only')
+        precheck(root)
     else: run(root,trial_id=args.trial_id)

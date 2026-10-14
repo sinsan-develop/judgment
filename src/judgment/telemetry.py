@@ -110,6 +110,18 @@ def redact_output(line):
     return dict(kind='redacted',content='omitted')
 
 
+def secret_safe_output(line):
+    text=line
+    for key,value in sorted(os.environ.items(),key=lambda item:len(item[1]),reverse=True):
+        if len(value)>=4 and re.search(r'(?i)(?:^|_)(?:API_KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|PRIVATE_KEY|ACCESS_KEY|AUTHORIZATION)(?:$|_)',key):
+            text=text.replace(value,'[REDACTED]')
+    text=re.sub(r'(?i)((?:Bearer|Basic)\s+)[A-Za-z0-9._~+/=-]+',r'\1[REDACTED]',text)
+    text=re.sub(r'(?i)((?:api[_-]?key|token|secret|password|credential|authorization)\s*[=:]\s*[\"\x27]?)([^\s\"\x27,;]+)',r'\1[REDACTED]',text)
+    text=re.sub(r'\b(?:sk-[A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9]{20,})\b','[REDACTED]',text)
+    text=re.sub(r'(https?://)[^\s/@:]+:[^\s/@]+@',r'\1[REDACTED]@',text)
+    return text
+
+
 def gpu_baseline(snapshot_path,output,*,limit=None):
     from .gpu_snapshot import validate_gpu_snapshot,parse_adapter_memory
     snapshot=json.loads(Path(snapshot_path).read_text(encoding='utf-8'))
@@ -138,7 +150,8 @@ def stop_evidence(folder,observations):
 
 
 class Telemetry:
-    def __init__(self,folder,*,role,arm=None,memory=None,timeout=1.):
+    def __init__(self,folder,*,role,arm=None,memory=None,timeout=1.,preserve_output=False):
+        self.preserve_output=preserve_output
         self.folder=Path(folder);self.role=role;self.timeout=timeout
         if memory is None:
             def memory():
@@ -192,7 +205,7 @@ class Telemetry:
             timing={};writer_start=time.perf_counter()
             try:
                 self.inflight_operation='writer.append_json'
-                if kind=='output': append_json(self.folder/'worker.output.private.jsonl',value)
+                if kind=='output': append_json(self.folder/'worker.output.private.jsonl',value,sync=not self.preserve_output)
                 else:
                     # heartbeat history는 flush, 최신 snapshot은 기존 durable fsync 유지.
                     if value.get('event')=='heartbeat':append_json(self.folder/(self.role+'.events.private.jsonl'),value,sync=False)
@@ -250,7 +263,7 @@ class Telemetry:
             if position is not None: self.state['encoded_exposure_position']=position
             if self.timing_fd is not None:self.state['lock_wait_seconds']=time.perf_counter()-lock_start
             if error_type is not None:
-                self.state['error_type']=error_type if error_type in ('RuntimeError','ValueError','TypeError','ConfigError','InputError','ModelError','OSError','MemoryError') else 'redacted_exception'
+                self.state['error_type']=error_type if re.fullmatch(r'[A-Za-z_]\w{0,100}',error_type) else 'redacted_exception'
             done=self._submit('state',dict(self.state),wait=False)
         self._wait_record(done)  # queue 순서 보존, I/O 대기 중 state lock 해제.
 
@@ -274,7 +287,9 @@ class Telemetry:
         self.event('optimizer_step',event='exit')
 
     def output(self,stream,line):
-        self._submit('output',dict(stream=stream,sampled_epoch=time.time(),**redact_output(line)),wait=False)
+        value=redact_output(line)
+        if self.preserve_output:value.update(kind='private_output',content=secret_safe_output(line))
+        self._submit('output',dict(stream=stream,sampled_epoch=time.time(),**value),wait=False)
 
     def __enter__(self):
         self.folder.mkdir(exist_ok=True)

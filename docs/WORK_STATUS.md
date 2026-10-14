@@ -1,5 +1,13 @@
 # judgment 작업현황
 
+## 2026-10-14 A/B 공통 child 환경·traceback 보존·사전 모델 로드 / 담당 어울
+
+- 직접범위:실제launcher interpreter/cwd/modulepath를통과시험과대조·기존승인환경통일/글로벌설치0/별도실행경로없이동일child로laya import·version·source·model_load먼저검증/로그비밀값만mask하고예외종류traceback보존/통과후2.75·6GiB·총1800의A-B1회승인안보고까지만. 현재A-B추가실행0.
+- 원인/보완:통과시험과parent는/opt/venv/bin/python·/workspace·src+고정upstream,실패child만src. worker_invocation단일함수로same sys.executable/canonicalcwd/PYTHONPATH(src+root/.work/upstream/laya)구성. A-B run_training과precheck는동일CLI _train-worker·같은모델로드함수,precheckflag만로드후optimizer전중단. 사전검사artifact도기존.work/runs로생성/별도venv·작업root·loader0. laya_origin고정upstream경로검사·version·gitcommit·interpretercwdmetadata현지보존.
+- 로그보완:realparent만preserve_outputTrue/환경credential값·token/password/APIKEY·Bearer/Basic·인증URL마스킹/나머지traceback원문private0600 JSONL/생산자일반출력flush·진행/중단durable유지. workerCLI예외catch로traceback소실하던경계제거·예외typename보존. 공통환경/traceback/secret/CLI4RED→4PASS/runner7PASS/telemetry19중18PASS1skip/memorymonitor5중3PASS2skip/reviewfix6PASS/startgate2PASS/diffcheckPASS. 처음시험기본Temp폴더권한정리오류는프로젝트.work Temp로수정.
+- 현지계획:worker-launcher-precheck-20261014-01 owncontainer1+producer1·기존image/networknone/RAM4+총RAMswap8/GPU6·1800초감시·fresh3≤2.75후docs/run_ab_comparison.py precheck→shared run_training(precheck_only)→_train-worker 동일sys.exe/env/cwd. 실제학습·optimizer·B0/initialhash전후·단계·exit/log/memory·원본8보존·final-test0/이번자원만정리. 안전코드commit/push→PCWSLexactSHA→현지검증→승인안기록.
+
+
 ## 2026-10-14 최종 2.75GiB 조건 A/B1회 직접 승인 / 담당 어울
 
 - 종료판정:source8d0488f/trial approved-final-gate-ab-20261014-01/fresh호스트3각2.514442GiB·A직전3각2.526199/2.524734/2.524734≤2.75/Aworker3.787초exit1·전체39.069초parentexit1·producerexit0·28표본·최대간격4.787초·생산자오류0. hostpeak2.526199GiB<6/model_load·완료저장optimizer0/not_started·GPU미초기화/RSS38137856bytes/반환optimizerupdatesnull/unverified·worker종료요청false·monitorfailure없음. B미시작/비교미산출/자동재시도0. workerfatal0/parent일반delay1비치명.

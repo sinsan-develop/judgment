@@ -261,7 +261,16 @@ def final_storage_check(config,run_dir):
     return measured
 
 
-def run_training(config, splits):
+def worker_invocation(config,run_dir,*,precheck_only=False):
+    root=Path(config.values['canonical_checkout']).resolve()
+    cmd=[sys.executable,'-m','judgment','_train-worker','--config',str(Path(run_dir)/'config.json')]
+    if precheck_only:cmd.append('--precheck-only')
+    env=dict(os.environ,HF_HUB_OFFLINE='1',TRANSFORMERS_OFFLINE='1',TOKENIZERS_PARALLELISM='false',
+             PYTHONPATH=os.pathsep.join((str(root/'src'),str(root/'.work/upstream/laya'))))
+    return cmd,env,str(root)
+
+
+def run_training(config, splits,*,precheck_only=False):
     if config.values.get('mode') == 'fixture':
         train, selection = training_rows(splits)
         return RunEvidence({'status':'fixture_only','trained':False,'optimizer_called':False,
@@ -279,22 +288,20 @@ def run_training(config, splits):
     for role,rows in (('train',train),('selection',selection)):
         (run_dir/(role+'.jsonl')).write_text('\n'.join(json.dumps(r,ensure_ascii=False) for r in rows)+'\n',encoding='utf-8')
     (run_dir/'config.json').write_text(json.dumps(c,ensure_ascii=False),encoding='utf-8')
-    cmd = [sys.executable,'-m','judgment','_train-worker','--config',str(run_dir/'config.json')]
-    env = dict(os.environ,HF_HUB_OFFLINE='1',TRANSFORMERS_OFFLINE='1',TOKENIZERS_PARALLELISM='false',
-               PYTHONPATH=str(Path(c['canonical_checkout'])/'src'))
+    cmd,env,cwd=worker_invocation(config,run_dir,precheck_only=precheck_only)
     snapshot=c['resources'].get('gpu_memory_snapshot_path')
     if snapshot: gpu_baseline(snapshot,run_dir/'gpu.before-worker.private.json',limit=c['resources']['vram_limit_bytes'])
-    with Telemetry(run_dir,role='parent',arm=c.get('experiment',{}).get('arm')) as telemetry:
-        return _training_process(config,run_dir,cmd,env,replay_verified,telemetry)
+    with Telemetry(run_dir,role='parent',arm=c.get('experiment',{}).get('arm'),preserve_output=True) as telemetry:
+        return _training_process(config,run_dir,cmd,env,replay_verified,telemetry,cwd=cwd)
 
 
-def _training_process(config,run_dir,cmd,env,replay_verified,telemetry):
+def _training_process(config,run_dir,cmd,env,replay_verified,telemetry,*,cwd=None):
     c=config.values
     start = time.monotonic(); peak_ram = peak_vram = 0; failure = None;trigger=None;monitor_failure=None;monitor_observation=None
     telemetry.event('worker_launch',event='enter')
     snapshot=c['resources'].get('gpu_memory_snapshot_path')
     if snapshot: gpu_baseline(snapshot,run_dir/'gpu.before-launch.private.json',limit=c['resources']['vram_limit_bytes'])
-    proc = subprocess.Popen(cmd,env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+    proc = subprocess.Popen(cmd,env=env,cwd=cwd or c.get('canonical_checkout'),stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     _ACTIVE_WORKERS.append(proc)
     drains=[drain_output(proc.stdout,telemetry,'stdout'),drain_output(proc.stderr,telemetry,'stderr')]
     try:
@@ -370,13 +377,13 @@ def _training_process(config,run_dir,cmd,env,replay_verified,telemetry):
     return RunEvidence(result)
 
 
-def training_worker(config_path):
+def training_worker(config_path,*,precheck_only=False):
     c = RunConfig(json.loads(config_path.read_text(encoding='utf-8')))
     root=c.values.get('canonical_checkout')
     allowed=root and config_path.parent.resolve().is_relative_to((Path(root)/'.work').resolve())
     recorder=Telemetry(config_path.parent,role='worker',arm=c.values.get('experiment',{}).get('arm')) if allowed else nullcontext(None)
     with recorder as telemetry:
-        try: return _training_worker(config_path,c,telemetry)
+        try: return _training_worker(config_path,c,telemetry,precheck_only=precheck_only)
         except BaseException as error:
             if telemetry:
                 try: telemetry.event(None,event='failed',error_type=type(error).__name__)
@@ -384,7 +391,7 @@ def training_worker(config_path):
             raise
 
 
-def _training_worker(config_path,c,telemetry):
+def _training_worker(config_path,c,telemetry,*,precheck_only=False):
     from .laya_adapter import LayaAdapter, offline
     phase=telemetry.phase if telemetry is not None else lambda stage:nullcontext()
     from .replay import install_final_test_guard, validate_replay_files
@@ -399,6 +406,23 @@ def _training_worker(config_path,c,telemetry):
     with _worker_limits(c,run_dir), offline():
         with phase('model_load'):
             adapter = LayaAdapter.from_local(Path(v['model_dir']),source_commit=v['source_commit'],model_revision=v['model_revision'],device=v['device'])
+        import laya
+        origin=Path(laya.__file__).resolve()
+        if not origin.is_relative_to(Path(v['canonical_checkout'])/'.work/upstream/laya'):
+            raise ConfigError('upstream_module_path')
+        runtime=dict(interpreter=sys.executable,cwd=os.getcwd(),pythonpath=os.environ.get('PYTHONPATH'),
+                     python_version=sys.version.split()[0],laya_version=laya.__version__,laya_source=str(origin),source_commit=v['source_commit'])
+        from .telemetry import atomic_json,own_memory
+        atomic_json(run_dir/'worker.runtime.private.json',runtime)
+        if precheck_only:
+            result=dict(status='worker_precheck_verified',trained=False,optimizer_updates_observed=0,
+                        runtime=runtime,own_memory=own_memory(_memory),model_loaded=True,final_test_opened=False)
+            del adapter
+            import gc,torch
+            gc.collect();torch.cuda.empty_cache()
+            atomic_json(run_dir/'summary.json',result)
+            if telemetry:telemetry.event('worker_precheck_complete')
+            return result
         # 실제 tokenize 검사를 모든 학습/selection 행에 수행한 후에만 optimizer로 전달한다.
         from .contracts import validate_request
         probe=None
