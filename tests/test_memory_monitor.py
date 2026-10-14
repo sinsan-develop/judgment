@@ -70,6 +70,9 @@ class MemoryMonitorTests(unittest.TestCase):
             self.assertEqual(result['worker_returncode'],7)
             self.assertEqual(result['reason'],'worker_failed')
             self.assertNotIn('monitor_failure',result)
+            self.assertEqual(result['monitor_observation']['worker_status_at_check'],'exited')
+            self.assertEqual(result['monitor_observation']['worker_returncode_at_check'],7)
+            self.assertEqual(json.loads((Path(name)/'monitor.failure.private.json').read_text())['worker_status_at_check'],'exited')
 
     def test_monitor_failure_stops_only_owned_worker_and_records_detail(self):
         unrelated=subprocess.Popen([sys.executable,'-c','import time;time.sleep(30)'])
@@ -87,6 +90,8 @@ class MemoryMonitorTests(unittest.TestCase):
                 self.assertEqual(result['reason'],'memory_monitor_unavailable')
                 self.assertEqual(result['monitor_failure']['failure_kind'],'proc_read_error')
                 self.assertIsNotNone(result['worker_returncode'])
+                self.assertEqual(result['monitor_observation']['worker_status_at_check'],'running')
+                self.assertIsNone(result['monitor_observation']['worker_returncode_at_check'])
                 stop=json.loads((Path(name)/'limit_failure.json').read_text())
                 self.assertEqual(stop['monitor_failure']['errno'],13)
                 self.assertIsNone(unrelated.poll())

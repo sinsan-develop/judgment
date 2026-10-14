@@ -290,7 +290,7 @@ def run_training(config, splits):
 
 def _training_process(config,run_dir,cmd,env,replay_verified,telemetry):
     c=config.values
-    start = time.monotonic(); peak_ram = peak_vram = 0; failure = None;trigger=None;monitor_failure=None
+    start = time.monotonic(); peak_ram = peak_vram = 0; failure = None;trigger=None;monitor_failure=None;monitor_observation=None
     telemetry.event('worker_launch',event='enter')
     snapshot=c['resources'].get('gpu_memory_snapshot_path')
     if snapshot: gpu_baseline(snapshot,run_dir/'gpu.before-launch.private.json',limit=c['resources']['vram_limit_bytes'])
@@ -316,6 +316,10 @@ def _training_process(config,run_dir,cmd,env,replay_verified,telemetry):
     except ConfigError as e:
         observed_exit=proc.poll()
         detail=getattr(e,'monitor_detail',None)
+        monitor_observation=dict(sampled_epoch=time.time(),failure_code=e.code,detail=detail,worker_pid=proc.pid,
+            worker_status_at_check='exited' if observed_exit is not None else 'running',
+            worker_returncode_at_check=observed_exit,check_scope='poll_after_monitor_failure_before_termination')
+        bounded_save(run_dir/'monitor.failure.private.json',monitor_observation,publish_before_sync=True)
         if observed_exit is None:
             failure = e.code
             monitor_failure=detail or dict(failure_kind=e.code)
@@ -328,7 +332,7 @@ def _training_process(config,run_dir,cmd,env,replay_verified,telemetry):
             if failure:
                 bounded_save(run_dir/'limit_failure.json',lambda:stop_evidence(run_dir,dict(reason=failure,
                     peak_ram_bytes=peak_ram,peak_vram_upper_bound_bytes=peak_vram,elapsed_seconds=time.monotonic()-start,trigger=trigger,
-                    monitor_failure=monitor_failure,worker_returncode_before_stop=proc.poll())),publish_before_sync=True)
+                    monitor_failure=monitor_failure,monitor_observation=monitor_observation,worker_returncode_before_stop=proc.poll())),publish_before_sync=True)
         finally:
             if proc.poll() is None:
                 try: proc.terminate()
@@ -338,7 +342,7 @@ def _training_process(config,run_dir,cmd,env,replay_verified,telemetry):
         except subprocess.TimeoutExpired: proc.kill(); proc.wait()
         # 종료 후 반환 코드는 종료 자체를 지연하지 않는 별도 bounded 기록으로 남긴다.
         bounded_save(run_dir/'worker.exit.private.json',dict(pid=proc.pid,returncode=proc.returncode,
-            monitor_failure=monitor_failure,termination_requested=bool(failure),sampled_epoch=time.time()),publish_before_sync=True)
+            monitor_failure=monitor_failure,monitor_observation=monitor_observation,termination_requested=bool(failure),sampled_epoch=time.time()),publish_before_sync=True)
         _ACTIVE_WORKERS.remove(proc)
         for thread in drains: thread.join(.1)
     summary_path = run_dir/'summary.json'
@@ -349,6 +353,7 @@ def _training_process(config,run_dir,cmd,env,replay_verified,telemetry):
     result = json.loads(summary_path.read_text(encoding='utf-8')) if summary_path.exists() else {'trained':False}
     if failure or proc.returncode != 0: result = dict(result,trained=False,status='failed',reason=failure or result.get('reason','worker_failed'))
     if monitor_failure is not None: result['monitor_failure']=monitor_failure
+    if monitor_observation is not None: result['monitor_observation']=monitor_observation
     result.update(worker_returncode=proc.returncode,peak_ram_bytes=peak_ram,peak_vram_bytes=peak_vram,elapsed_seconds=time.monotonic()-start,
                   code_revision=c['code_revision'],source_commit=c['source_commit'],model_revision=c['model_revision'],seed=c['seed'],
                   training_scope='head_only' if c['training']['freeze_encoder'] else 'encoder_and_head',
