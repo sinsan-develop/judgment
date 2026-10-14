@@ -1,8 +1,37 @@
-# 승인된 A/B 비교 실행 기록 — 자원 상한 중단
+# 승인된 A/B 비교 실행 기록 — A 중단·B 미시작
 
-2026-10-14 / 담당 어울 / **Windows·PCWSL 모두 RESOURCE_LIMIT_STOP, 비교 결과 미산출**
+2026-10-14 / 담당 어울 / **최신 승인 재실행: A memory_monitor_unavailable, B 미시작, 비교 결과 미산출**
 
-## 최신 판정 — 승인된 PCWSL 시도
+## 최신 판정 — 기록 보완 후 승인된 PCWSL 재실행 1회
+
+시도 `approved-retry-20261014-01`, 실행 소스 `262cfada722a1c7166ac4850c8d9ea4d7307e039`. 시작 직전 기록된 전체 GPU 기준값은 **0.7083GiB**로 6GiB 이하였다. A worker 실행 약 **94.02초**에 `memory_monitor_unavailable`로 중단됐다. **A 정상 완료 조건을 충족하지 못해 B는 실행하지 않았고 자동 재시도는 0회다.** 모델 로드·입력 검사·초기 tensor 검사를 지난 뒤 마지막 저장 단계는 학습 전 `dry_run`이었다. 평가까지 도달하지 않아 A/B 비교 결과와 품질 판정은 없다.
+
+| 중단 기록 | 관측 |
+|---|---:|
+| 마지막 저장 optimizer 완료 수 | **0회**, 상태 `not_started` |
+| 정확한 종료 순간 optimizer 완료 수 | **미확인**; 마지막 worker 기록은 중단 약5.35초 전 |
+| 실험 worker 자체 RAM RSS, 마지막 기록 | 1.873GiB |
+| 실험 자체 GPU allocated / reserved, 마지막 기록 | 1.249 / 1.277GiB |
+| 실험 자체 GPU peak allocated / reserved | 1.258 / 1.277GiB |
+| 전체 host GPU 계수 표본 피크 | **2.289GiB**, 6GiB 이하 |
+| parent+worker RAM 표본 피크 | 2.520GiB |
+| 프로젝트 저장 표본 | 17,957,499,832bytes; 승인30GiB 이내 |
+
+자체 GPU 수치는 PyTorch allocator 관측치이며 allocated와 reserved를 합산하지 않는다. 전체 resident VRAM으로 간주하지 않는다. 아래는 마지막 유효 host snapshot의 adapter 계수행별 전체 사용량이다. 각 행의 적용값은 `max(dedicated+shared, committed)`이고 총합은 **2,344.410MiB = 2.289GiB**다. 다른 작업과 committed memory가 포함될 수 있으며 세 계수행을 세 물리 GPU라고 해석하지 않는다.
+
+| adapter 계수행 | Dedicated MiB | Shared MiB | Committed MiB | 적용값 MiB |
+|---|---:|---:|---:|---:|
+| 1 | 0.285 | 0.500 | 0.793 | 0.793 |
+| 2 | 0.000 | 0.008 | 28.906 | 28.906 |
+| 3 | 1,540.258 | 208.496 | 2,314.711 | 2,314.711 |
+
+중단 파일의 자원 snapshot은 감시 실패 직전의 **마지막 유효 측정**이다. 이를 6GiB 초과를 발생시킨 측정으로 해석하지 않는다. 감시가 worker 메모리를 계속 읽지 못한 사실은 확인되지만, worker 소멸의 근본 원인은 미확인이다. 이번 컨테이너에 한정한 Docker 이벤트에는 OOM 이벤트가 없었다. 이는 OOM을 배제하는 증거가 아니며, 컨테이너의 exit1은 parent 종료 값이다. worker OS 종료 코드는 저장되지 않았다. 비공개 worker 출력의 원문을 가린 기록만으로 드라이버 오류·OOM·외부 종료를 단정하지 않는다.
+
+원본 train/calibration/selection의 examples·JSONL6파일과 선별 제안·검토2파일의 전후 hash가 같고 초기 가중치 hash도 이전 승인 전송 기록과 같다. 기존 실패 폴더를 덮어쓰지 않고 새 시도 폴더에 고정 입력·순서·원본 ID/그룹 추적을 보존했다. A/B의 동일 초기 가중치·학습 설정·각697노출/88갱신 계획 및 B280건/잠정 정답49건 조건을 유지했으나 실제 완료 조건은 충족하지 못했다. 검증·시험 자료를 학습에 넣지 않았고 final-test는 다시 열지 않았다. calibration/selection 평가도 이번에는 미실행이다. 따라서 자료 선별·정답 수정·반복 노출의 합친 효과를 아직 측정하지 못했다.
+
+이번 monitor와 컨테이너만 종료·제거했고 다른 서비스·driver·6GiB 한도·학습 설정은 변경하지 않았다. 비공개 로그·중단 기록·원본 보존 확인과 `interrupted.summary.private.json`은 PCWSL의 `.work/ab_trials/approved-retry-20261014-01` 및 연결 worker 폴더에 보존했다. Windows 역복사·원문/모델 Git 업로드는 없다. 승인된 재실행 1회는 소진됐으며 새 학습은 수행하지 않는다. 향후 원인 확인에 필요한 미기록 항목은 worker 종료 코드와 종료 직전 process 상태다.
+
+## 이전 시도 — 기록 보완 전 승인된 PCWSL 시도
 
 비공개 18파일 이전을 신산님이 명시 승인한 후 PCWSL에서 A/B를 시도했다. **A 시작 약15.7초에 전체 호스트 GPU 상한 계수6.30GiB가 승인 상한6GiB를 넘어 자동 중단됐고, B는 시작하지 않았다.** A의 최종 모델·697회 실제 소비·optimizer88회·reload·평가가 완료되지 않아 A/B 비교 수치는 없다. A의 실제 optimizer 횟수는 미확인이다. Windows 실패 증거는 덮어쓰지 않았다.
 

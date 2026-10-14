@@ -2,6 +2,9 @@
 
 ## 2026-10-14 기존 조건 A/B 재실행1회 승인 / 담당 어울
 
+- 최종판정:승인1회소진/A실패/B미시작/비교미산출. 실행SHA262cfada722a1c7166ac4850c8d9ea4d7307e039, trial approved-retry-20261014-01. 직전baseline0.7083GiB<6GiB로시작,worker 약94.02초 memory_monitor_unavailable. 마지막durable단계dry_run/완료optimizer0/not_started,기록age5.35초로정확한종료순간갱신수미확인. 자동재시도0.
+- 관측:worker자체RSS1.873GiB/GPUallocator allocated1.249/reserved1.277GiB(peak1.258/1.277); parent+worker RAMpeak2.520GiB; hostGPUpeak2.289GiB<6; 마지막adapter적용MiB0.793/28.906/2314.711. 직전유효snapshot은GPU초과trigger가아님. container한정events OOM없음/worker종료코드미저장으로소멸원인미확인,OOM배제·driver원인주장0. 실행오류1회,같은원인재시도0.
+- 보존/종료:원본8파일hash/초기가중치hash불변,final-test내용/hash열기0/평가미실행/Bfolder없음. 이번monitorPID3517잔류없음/container제거확인,다른서비스·driver변경0/Windows비공개역복사0. PCWSL trial에sources.after-interruption.private.json/interrupted.summary.private.json 및worker중단증거보존. 공개보고 docs/AB_COMPARISON_RESULT.md 갱신. 미검증은worker근본종료원인/정확한최종optimizer수/697실소비/88완료/reload/평가/A-B효과. 다음은공개기록checkpoint/push후신산님보고,새학습없음.
 - 직접승인:시작기준GPU>6GiB면미시작,기존학습설정/6GiB유지, A정상완료(88관측/저장/reload/기존자료평가)때만B,중단시자동재시도0/마지막단계·저장완료수·자체allocator/RSS·adapter전체계수보고. final-test열기0,평가는calibration/selection만.
 - 기존실패 namespace .work/ab_comparison 보존. 승인1회용 .work/ab_trials/approved-retry-20261014-01에검증된입력2/manifest2/preparation/sourcebefore의6파일만동일hash로복사. 새namespace 재사용거절,원본/초기가중치복제·정답수정·순서변경0. 이필수보존경로와baseline즉시거절검사만최소추가,TDD2 RED→GREEN/영향26PASS.
 - 시작검사:전체trial직전/worker준비직전/실제Popen직전의fresh adapter snapshot을기록하고6GiB초과면ConfigError로worker미시작. 이후기존독립guard유지. 기존학습697노출/88optimizer/head-only/fp32/seed13/gradaccum8/정답49이번실험전용과1800초/RAM24/disk30GiB그대로.
