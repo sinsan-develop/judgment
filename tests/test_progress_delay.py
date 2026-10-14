@@ -36,7 +36,7 @@ class ProgressDelayTests(unittest.TestCase):
                     while not (p/'telemetry.delay.min.private.jsonl').stat().st_size and time.monotonic()<deadline:time.sleep(.01)
                     row=json.loads((p/'telemetry.delay.min.private.jsonl').read_text().splitlines()[0])
                     self.assertEqual(row['classification'],'progress_delay')
-                finally:gate.set();t.__exit__(None,None,None)
+                finally:gate.set();t.timeout=1.;t.__exit__(None,None,None)
 
     def test_event_releases_state_lock_before_waiting_on_io(self):
         with temporary_folder() as name:
