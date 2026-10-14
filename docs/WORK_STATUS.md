@@ -2,6 +2,8 @@
 
 ## 2026-10-14 atomic_json 지연 계측·최소 보완 / 담당 어울
 
+- 보완후시험:6994eba 첫모델전용시험writermax0.2606초/atomic0.2605/lock0.019ms,delay/failure로그없음이나37.716초hostGPU6.164GiB로exit3. 8409aab 최종시험model_load중63.103초hostGPU6.267GiB로exit3,일반1초초과delay로그1행을남기고계속한뒤실제vram_limit중단확인. 학습/optimizer0/모델로드+80반복완료미검증,상한완화·서비스중지0. 현지안전시험실제mem조회실패·6GiB+1byte owned종료/unrelated생존PASS,FD시험은30ms인위지연상한을종료에도써서close검사실패→시험만지연주입30ms/종료1초분리. product1초유지.
+- 독립review1회Critical0/Important0/Minor1(FD latewriter 재사용경합)→dupFD를note thread가소유/close,TDD RED→GREEN5PASS/재리뷰없음. Windows최종전체116중112PASS/4조건skip(이번test-only보완전),모델없는추가현지시험으로최종확인. 코드계측결과는스케줄링/GIL·외부부하포함이라단순전후성능비교아님.
 - 재현결과:sourcee586331 모델로드중exit3/독립submit.wait_timeout writer.atomic_json/완료0,52완료계측. writer전체max1.6336초/atomic max0.6505초/serialize max0.103ms/fsync중앙100.280ms·max221.113ms/lock max260.011ms/queue max0.280ms. 각구간벽시계는스케줄링·GIL재개도포함,물리디스크장애확정0. 완료대기에는append+atomic 2회durable fsync가누적되며state lock을유지한I/O대기가확인됨.
 - 최소보완:TDD일반기록지연비치명/대기중잠금해제2RED→구현. heartbeat history만flush(최신snapshot durable fsync유지),phase/optimizer history durable유지. queue삽입·순서는lock내/1초wait는lock외. 1초내done미완료는독립delay로그·delayed flag로분리,한도연장0. 실제writer예외·queuefull·메모리/6GiB·stale 감시중단은기존failed/독립guard그대로. 정상close에writer미완료면완료로승격하지않음.
 - 직접승인:A/B보류/경로·serialize·lock·write·flush/fsync·replace분리계측/1초상한단순연장금지/일반기록지연과안전감시구분/GPU6GiB·중단유지/모델로드+반복기록검증.

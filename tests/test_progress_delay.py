@@ -14,13 +14,13 @@ class ProgressDelayTests(unittest.TestCase):
         real_write=os.write
         def write(fd,data):
             if b'progress_delay' in data:
-                captured.append(fd);ready.set();release.wait(2)
+                captured.append(fd);ready.set();release.wait(10)
             return real_write(fd,data)
         with temporary_folder() as name:
             t=Telemetry(Path(name),role='worker',memory=lambda:{},timeout=.03)
             with patch('judgment.telemetry.atomic_json',side_effect=lambda *a,**k:gate.wait(2)),patch('judgment.telemetry.os.write',side_effect=write):
                 try:
-                    t.__enter__();self.assertTrue(ready.wait(1));gate.set();t.__exit__(None,None,None)
+                    t.__enter__();self.assertTrue(ready.wait(1));gate.set();t.timeout=1.;t.__exit__(None,None,None)
                     os.fstat(captured[0])
                 finally:gate.set();release.set();time.sleep(.05)
 
