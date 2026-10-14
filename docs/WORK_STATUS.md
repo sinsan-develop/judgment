@@ -1,5 +1,13 @@
 # judgment 작업현황
 
+## 2026-10-14 snapshot 종료 진단·임시 실제 학습 메모리 검증 / 담당 어울
+
+- 직접승인:종료후snapshot오류근거확인/최소보완/fresh3전체GPU≤3GiB시별도임시모델실제forward·backward·optimizer짧은검증/6GiB유지/가중치A-B재사용금지/실측근거최종시작조건. A-B실행승인아님/final-test0/타프로그램종료0/역복사0.
+- 과거근거:stop파일1791954980.627690→오류로그1791954980.825690(차0.198초). 이전루프CIM조회후stop재검사없음/bounded_call이쓰기예외와1초대기초과를bool로소실. 종료와저장중첩가능성확인/과거정확한OS오류·timeout확정불가.
+- 최소보완:조회뒤stop재검사/저장예외type·errno와timeout구분/atomic구간계측/독립preopen0600최소로그dupFD daemon20ms/진짜쓰기실패는stop존재해도숨기지않음. 1초쓰기상한·15초stale·6GiB·감시중단유지. TDD stop중조회 RED·분류미구현RED→3시험PASS.
+- 현지계획:training-memory-20261014-01 producer1+owncontainer1/기존immutableimage·networknone·RAM4+총swap8·GPU6GiB·1800초유지. fresh3표본각≤3GiB/초기모델새로드→selection374보완평가→기존원본697·seed13·기존학습함수/설정으로16forward+16backward+AdamW2회후다음forward전에정상probe중단. scheduler전체697기준88유지/임시가중치저장0·재사용0/입력·초기가중치hash전후확인/이번자원만정리. 부족또는실패시자동모델재시도0.
+
+
 ## 2026-10-14 학습 전 선택 평가 최소 메모리 보완·피크 측정 / 담당 어울
 
 - 최종실측:sourcefc0eb0e exactSHA/probe preselection-memory-20261014-01/시작3표본각2.525337GiB→전체70.185초exit0/실제평가13.220초selection374 skip0/원래16padding의GPU2행vs보완1행16건대조maxabs0/top동일/finiteCPU374/원본입력·초기가중치hash불변. peakallocated1479220224bytes(1.378GiB)/reserved1614807040(1.504GiB)/host4641357824(4.322601GiB)<6/시작대비추가1.797264GiB. 학습·optimizer·A-B·final-test0.
