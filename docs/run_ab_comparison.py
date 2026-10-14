@@ -13,6 +13,8 @@ import math
 import os
 from pathlib import Path
 import random
+import re
+import shutil
 import subprocess
 import sys
 import time
@@ -220,14 +222,30 @@ def paired_accuracy_interval(root, folder):
                 confidence_level=.95, delta_B_minus_A_interval=[_quantile(samples, .025), _quantile(samples, .975)])
 
 
-def run(root):
+PREPARED_FILES=('A.examples.private.json','B.examples.private.json','A.manifest.private.json','B.manifest.private.json',
+                'preparation.private.json','sources.before.private.json')
+
+
+def new_trial(root,trial_id):
+    if not re.fullmatch(r'[a-z0-9][a-z0-9-]{0,63}',trial_id): raise ValueError('invalid_trial_id')
+    folder=root/'.work/ab_trials'/trial_id
+    folder.mkdir(parents=True,exist_ok=False)
+    for name in PREPARED_FILES:
+        source=root/'.work/ab_comparison'/name
+        target=folder/name
+        shutil.copyfile(source,target)
+        if sha(source)!=sha(target): raise ValueError('trial_preparation_copy')
+    return folder
+
+
+def run(root,*,trial_id=None):
     from judgment.contracts import RunConfig
     from judgment.replay import install_final_test_guard, validate_replay_files, remaining_trial_seconds
     from judgment.runner import preflight, run_training, _worker_limits, final_storage_check
     from judgment.data import load_real_bundle
     from judgment.telemetry import gpu_baseline
     overall_start = time.monotonic()
-    folder = root / '.work/ab_comparison'
+    folder = new_trial(root,trial_id) if trial_id else root / '.work/ab_comparison'
     preparation = load(folder / 'preparation.private.json')
     before = load(folder / 'sources.before.private.json')
     if before != {str(p): sha(p) for p in source_paths(root)}:
@@ -244,7 +262,7 @@ def run(root):
     global_values['resources']['time_limit_seconds'] = remaining_trial_seconds(overall_start, time.monotonic())
     global_config = bind(global_values)
     snapshot=global_values['resources'].get('gpu_memory_snapshot_path')
-    if snapshot: gpu_baseline(snapshot,folder/'gpu.before-trial.private.json')
+    if snapshot: gpu_baseline(snapshot,folder/'gpu.before-trial.private.json',limit=global_values['resources']['vram_limit_bytes'])
     with _worker_limits(global_config, folder) as global_resources:
         for arm in ('A', 'B'):
             arm_folder = folder / arm
@@ -292,8 +310,12 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('command', choices=('prepare', 'run'))
     parser.add_argument('--root', type=Path, required=True)
+    parser.add_argument('--trial-id',help='별도로 승인한 단일 재시도의 새 보존 이름; 기존 증거 재사용/덮어쓰기 금지')
     args = parser.parse_args()
     root = args.root.resolve()
     os.chdir(root)
     sys.path.insert(0, str(root / 'src'))
-    (prepare if args.command == 'prepare' else run)(root)
+    if args.command=='prepare':
+        if args.trial_id: parser.error('trial-id is for approved run only')
+        prepare(root)
+    else: run(root,trial_id=args.trial_id)

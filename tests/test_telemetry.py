@@ -21,6 +21,15 @@ TEST_TMP.mkdir(parents=True,exist_ok=True)
 
 
 class TelemetryTests(unittest.TestCase):
+    def test_over_limit_baseline_is_saved_and_refuses_start(self):
+        row=dict(Name='synthetic-adapter',DedicatedUsage=6*1024**3+1,SharedUsage=0,TotalCommitted=0)
+        value=dict(bytes_used=6*1024**3+1,sampled_epoch=time.time(),scope='windows_gpu_adapter_upper_bound',producer_pid=9,adapters=[row])
+        with tempfile.TemporaryDirectory(dir=TEST_TMP) as temporary:
+            source=Path(temporary)/'snapshot.json';source.write_text(json.dumps(value))
+            target=Path(temporary)/'baseline.private.json'
+            with self.assertRaisesRegex(ConfigError,'vram_limit_before_start'): gpu_baseline(str(source),target,limit=6*1024**3)
+            self.assertEqual(json.loads(target.read_text())['snapshot']['bytes_used'],6*1024**3+1)
+
     def test_normal_close_waits_boundedly_for_inflight_sampler(self):
         with tempfile.TemporaryDirectory(dir=TEST_TMP) as temporary:
             t=Telemetry(Path(temporary),role='worker',memory=lambda:{})

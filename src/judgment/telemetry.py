@@ -95,7 +95,7 @@ def redact_output(line):
     return dict(kind='redacted',content='omitted')
 
 
-def gpu_baseline(snapshot_path,output):
+def gpu_baseline(snapshot_path,output,*,limit=None):
     from .gpu_snapshot import validate_gpu_snapshot,parse_adapter_memory
     snapshot=json.loads(Path(snapshot_path).read_text(encoding='utf-8'))
     validate_gpu_snapshot(snapshot)
@@ -103,8 +103,9 @@ def gpu_baseline(snapshot_path,output):
     if not isinstance(rows,list) or not rows or any(not isinstance(r.get('Name'),str) or not r['Name'] for r in rows):
         raise ConfigError('gpu_baseline_unavailable')
     if parse_adapter_memory(rows)!=snapshot['bytes_used']: raise ConfigError('gpu_baseline_unavailable')
-    result=dict(captured_epoch=time.time(),scope='host_all_gpu_adapter_upper_bound',snapshot=snapshot)
+    result=dict(captured_epoch=time.time(),scope='host_all_gpu_adapter_upper_bound',snapshot=snapshot,start_limit_bytes=limit)
     if not bounded_save(output,result,timeout=1.): raise ConfigError('telemetry_unavailable')
+    if limit is not None and snapshot['bytes_used']>limit: raise ConfigError('vram_limit_before_start')
     return result
 
 

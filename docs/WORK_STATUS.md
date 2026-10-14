@@ -1,5 +1,12 @@
 # judgment 작업현황
 
+## 2026-10-14 기존 조건 A/B 재실행1회 승인 / 담당 어울
+
+- 직접승인:시작기준GPU>6GiB면미시작,기존학습설정/6GiB유지, A정상완료(88관측/저장/reload/기존자료평가)때만B,중단시자동재시도0/마지막단계·저장완료수·자체allocator/RSS·adapter전체계수보고. final-test열기0,평가는calibration/selection만.
+- 기존실패 namespace .work/ab_comparison 보존. 승인1회용 .work/ab_trials/approved-retry-20261014-01에검증된입력2/manifest2/preparation/sourcebefore의6파일만동일hash로복사. 새namespace 재사용거절,원본/초기가중치복제·정답수정·순서변경0. 이필수보존경로와baseline즉시거절검사만최소추가,TDD2 RED→GREEN/영향26PASS.
+- 시작검사:전체trial직전/worker준비직전/실제Popen직전의fresh adapter snapshot을기록하고6GiB초과면ConfigError로worker미시작. 이후기존독립guard유지. 기존학습697노출/88optimizer/head-only/fp32/seed13/gradaccum8/정답49이번실험전용과1800초/RAM24/disk30GiB그대로.
+- 자원:PCWSL own GPU감시1개와 judgment-ab-approved-retry-20261014-01 container1개만새로생성,networknone/RAM4g+총RAMswap8g/기존immutable image. 종료시이번monitor/container만정리하고source/input/weight/로그보존. 다른서비스/driver변경·비공개역복사없음. 다음은안전SHA/remote일치→CIM기준검사→승인1회시도→중단/결과보고.
+
 ## 2026-10-14 기록·중단 보완 승인 구현 / 담당 어울
 
 - 직접승인:4개기록·중단보완,실행직전adapter별GPU기준값,원문/비밀없는비공개worker출력,정상/강제중단작은모의시험. A/B재실행은결과확인뒤. 실행기준d75c09c/work-native-synthetic기존체크아웃,실데이터/모델/서비스/한도/학습조건변경0.

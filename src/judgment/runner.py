@@ -267,7 +267,7 @@ def run_training(config, splits):
     env = dict(os.environ,HF_HUB_OFFLINE='1',TRANSFORMERS_OFFLINE='1',TOKENIZERS_PARALLELISM='false',
                PYTHONPATH=str(Path(c['canonical_checkout'])/'src'))
     snapshot=c['resources'].get('gpu_memory_snapshot_path')
-    if snapshot: gpu_baseline(snapshot,run_dir/'gpu.before-worker.private.json')
+    if snapshot: gpu_baseline(snapshot,run_dir/'gpu.before-worker.private.json',limit=c['resources']['vram_limit_bytes'])
     with Telemetry(run_dir,role='parent',arm=c.get('experiment',{}).get('arm')) as telemetry:
         return _training_process(config,run_dir,cmd,env,replay_verified,telemetry)
 
@@ -276,10 +276,14 @@ def _training_process(config,run_dir,cmd,env,replay_verified,telemetry):
     c=config.values
     start = time.monotonic(); peak_ram = peak_vram = 0; failure = None;trigger=None
     telemetry.event('worker_launch',event='enter')
+    snapshot=c['resources'].get('gpu_memory_snapshot_path')
+    if snapshot: gpu_baseline(snapshot,run_dir/'gpu.before-launch.private.json',limit=c['resources']['vram_limit_bytes'])
     proc = subprocess.Popen(cmd,env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     _ACTIVE_WORKERS.append(proc)
     drains=[drain_output(proc.stdout,telemetry,'stdout'),drain_output(proc.stderr,telemetry,'stderr')]
     try:
+        telemetry.state['worker_pid']=proc.pid
+        telemetry.event('worker_launched')
         while proc.poll() is None:
             ram = _memory(proc.pid)+_memory(os.getpid()); vram = _gpu_memory(proc.pid) if c['device'] == 'cuda' else 0
             peak_ram,peak_vram = max(peak_ram,ram),max(peak_vram,vram)
