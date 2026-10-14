@@ -1,8 +1,19 @@
 # 승인된 A/B 비교 실행 기록 — A 중단·B 미시작
 
-2026-10-14 / 담당 어울 / **최신 승인 시도: A 학습 전 선택 평가에서 GPU 상한 중단/exit3, B 미시작, 비교 결과 미산출**
+2026-10-14 / 담당 어울 / **최신 승인 시도: A model_load의 worker 모듈 경로 오류/exit1, B 미시작, 비교 결과 미산출**
 
-## 최신 판정 — 공동 검증 여유 기준 승인 A/B 1회
+## 최신 판정 — 2.75GiB 조건 승인 A/B 1회
+
+trial `approved-final-gate-ab-20261014-01`, 실행 source `8d0488f`. 호스트 사전fresh3표본은 모두2.514442GiB, 컨테이너 A 직전 새3표본은2.526199/2.524734/2.524734GiB로2.75GiB 조건을 충족했다. 기존 설정·동일 초기·각697노출88갱신 계획·6GiB 감시·총1800초를 유지했다. 각arm전 fresh조건을 확인하고 B전에 A의activeworker/allocated/reserved0을 확인하도록 실행기만 최소 보완했다. 시작gate시험2개는 Windows/PCWSL PASS다.
+
+**A worker는3.787초에 exit1로 실패했고, B는 시작하지 않았다. A/B 비교 결과는 없다.** 준비·정리 포함전체39.069초/parentexit1·producerexit0/28GPU표본/최대간격4.787초/생산자오류0. 전체GPU표본피크2.526199GiB로6GiB 초과 중단이 아니다. 마지막worker저장단계는 `model_load`, 완료optimizer0·not_started/GPU not_initialized/RSS38,137,856bytes. 반환 결과의optimizer_updates_observed는null/unverified이며 마지막저장값과 구분한다. worker.exit 기록의termination_requested=false/monitor_failure=null, 독립fatal로그0행이다. parent의일반기록 지연경고1개는비치명이고 직접실패원인으로 단정하지 않는다.
+
+직접 원인 근거는 **선택한 인터프리터와 child worker PYTHONPATH의 불일치**다. 이번 실행에서는 이미지의 `/opt/venv/bin/python`을 사용했다. 부모 PYTHONPATH는프로젝트src+고정upstream이지만 `runner.run_training`이 child에는src만 설정한다. 모델없는 `importlib.util.find_spec('laya')` 조회는 부모경로True/child경로False, 같은child경로의모델없는import재현은 **ModuleNotFoundError / missing module laya**다. `_LocalBackend.__init__`의첫`import laya`가 불가능한 환경이다. 실행 담당 어울이 worker 경로까지 확인하지 못한 설정 오류다. 임시 검증은같은프로세스에upstream을명시해서이child경계누락을검증하지못했다.
+
+원래worker로그는예외종류를 `redacted_exception`으로지웠고 stderr도원문을보존하지않아 **당시예외원문은확인불가**다. 위예외명은동일경로의모델없는재현으로확인한것이며당시로그에서복원한것으로표현하지않는다. 학습·모델·torch·GPUcontext를다시실행하지않았다. 실행경로수정·추가학습은하지않았으며승인된실제시도는1회로종료했다.
+
+원본8파일과고정초기가중치hash불변/B폴더미생성을확인했다. final-test 내용/hash 접근0/보정·선택비교도달0/학습자동재시도0/타프로그램서비스종료0/6GiB완화0/Windows역복사0이다. 이번owncontainer·producer16487잔류0. 현지trial과runtime에실패·반환·마지막진행·gate·모듈조회/재현근거를보존했다. 다음조치는모델없는worker실행경로보완·검증이며A/B재실행은별도직접승인전진행하지않는다.
+## 이전 시도 — 공동 검증 여유 기준 승인 A/B 1회
 
 시도 `approved-headroom-ab-20261014-01`, 실행 소스 `17b79ff88707c23715718f36e8ef6d0b8029a89b`. 공동 검증의 시작2.311GiB/추가 관측 약1.329GiB/reserved1.242GiB를 근거로 시작≤4GiB gate를 사용했다. 새 시각 GPU 표본3개가 모두 **2.5528946GiB**로 최소2GiB 여유 조건을 충족한 뒤 승인된 실제1회만 시작했다. 기존 초기 가중치·학습 설정·697노출/88갱신 계획·GPU6GiB·총1800초를 유지했다.
 

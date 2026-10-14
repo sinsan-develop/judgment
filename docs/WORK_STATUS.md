@@ -2,6 +2,10 @@
 
 ## 2026-10-14 최종 2.75GiB 조건 A/B1회 직접 승인 / 담당 어울
 
+- 종료판정:source8d0488f/trial approved-final-gate-ab-20261014-01/fresh호스트3각2.514442GiB·A직전3각2.526199/2.524734/2.524734≤2.75/Aworker3.787초exit1·전체39.069초parentexit1·producerexit0·28표본·최대간격4.787초·생산자오류0. hostpeak2.526199GiB<6/model_load·완료저장optimizer0/not_started·GPU미초기화/RSS38137856bytes/반환optimizerupdatesnull/unverified·worker종료요청false·monitorfailure없음. B미시작/비교미산출/자동재시도0. workerfatal0/parent일반delay1비치명.
+- 오류근거:이번/opt/venv/bin/python+parentPYTHONPATHsrc/upstream에반해run_training의childPYTHONPATHsrc만. 모델없는find_spec parentTrue/childFalse·같은childimport재현ModuleNotFoundError missinglaya→_LocalBackend.__init__첫importlaya불가. 어울의인터프리터/child경로확인누락. 기존worker예외는redacted_exception·stderr omitted로당시원문확인불가/재현예외를로그복원으로표현하지않음. 모델없는진단만/실행경로추가수정·모델로드·학습재시도0.
+- 보존:원본8·고정초기가중치hash불변/검증자료학습혼합0/final-test내용·hash0/owncontainer·producer16487잔류0/서비스변경0·역복사0. 공개결과docs/AB_COMPARISON_RESULT.md/현지trial+runtime실패로그보존/승인1회종료. 다음은별도지시로worker경로모델없는보완·검증이며A-B추가승인전실행0.
+
 - 승인범위:fresh3연속전체GPU≤2.75GiB/기존설정·6GiB·총1800초/A정상완료후GPUallocated/reserved0·activeworker0확인후새fresh3표본으로B재검사/동일초기/checkpoint불변/보정·선택만/final-test열기0/실패자동재시도0·마지막단계·완료갱신·독립오류근거보고. trial approved-final-gate-ab-20261014-01/기존입력697노출88·B280선별49잠정수정·ID그룹순서고정.
 - 최소실행보완:각arm전 fresh조건확인30초내·3개서로다른시각·고점유표본시연속수reset/초과시미시작, B전torchgc/empty_cache뒤allocated/reserved/active_training_workers0기록검사. 설정·점수·학습함수변경0. 시작조건2시험RED→2PASS/diffcheckPASS. 안전sourcecommit/push→PCWSLexactSHA→ownproducer+기존imageowncontainer1·networknone·RAM4+총swap8·독립GPU6/총1800감시→승인1회→이번자원만정리. 역복사·타서비스중지0.
 
