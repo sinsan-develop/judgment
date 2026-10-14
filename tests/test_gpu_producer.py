@@ -11,6 +11,16 @@ spec.loader.exec_module(producer)
 
 
 class ProducerTests(unittest.TestCase):
+    def test_live_snapshot_and_history_do_not_wait_for_fsync(self):
+        with tempfile.TemporaryDirectory(dir=producer.ROOT/'.work') as tmp:
+            output=Path(tmp)/'gpu.json'
+            with patch('judgment.telemetry.os.fsync',side_effect=lambda fd:time.sleep(.2)) as sync:
+                result=producer.record_operation(lambda:producer.publish_live_snapshot(output,{'bytes_used':1}),timeout=.05)
+                self.assertIsNone(result['failure_kind'])
+                producer.append_json(Path(tmp)/'history.jsonl',{'bytes_used':1},sync=False)
+                sync.assert_not_called()
+            self.assertTrue(output.exists())
+
     def test_stop_during_query_does_not_publish(self):
         with tempfile.TemporaryDirectory(dir=producer.ROOT/'.work') as tmp:
             output=Path(tmp)/'gpu.json';stop=Path(tmp)/'stop'

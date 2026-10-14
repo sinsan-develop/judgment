@@ -18,7 +18,7 @@ def current_telemetry():
     return _ACTIVE[-1] if _ACTIVE else None
 
 
-def atomic_json(path, value, *, publish_before_sync=False, timing=None):
+def atomic_json(path, value, *, publish_before_sync=False, timing=None, sync=True):
     started=time.perf_counter();last=started
     def mark(name):
         nonlocal last
@@ -34,12 +34,12 @@ def atomic_json(path, value, *, publish_before_sync=False, timing=None):
         with os.fdopen(fd,'w',encoding='utf-8') as stream:
             stream.write(serialized);mark('write')
             stream.flush();mark('flush')
-            if not publish_before_sync: os.fsync(stream.fileno())
+            if sync and not publish_before_sync: os.fsync(stream.fileno())
             mark('fsync')
         mark('close')
         os.replace(temporary,path)
         mark('replace')
-        if publish_before_sync:
+        if sync and publish_before_sync:
             # 중단 packet만 먼저 공개한다. sync 완료를 기다리느라 상한 종료를 늦추지 않는다.
             fd=os.open(path,os.O_RDWR)
             try: os.fsync(fd)

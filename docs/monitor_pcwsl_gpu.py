@@ -40,6 +40,12 @@ def failure_note(fd,detail):
     record_operation(write,timeout=.02)
 
 
+def publish_live_snapshot(output,value,*,timing=None):
+    # 현재값은 flush+atomic replace로 공개한다. reboot 이후 재사용하지 않는
+    # 일시 감시 계수이므로 fsync 지연으로 관측 루프를 중단시키지 않는다.
+    atomic_json(output,value,timing=timing,sync=False)
+
+
 def main(output, stop_file):
     command = ['/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe',
                '-NoProfile', '-NonInteractive', '-Command',
@@ -66,14 +72,14 @@ def produce(command,output,stop_file,deadline,failure_fd):
         value = dict(bytes_used=parse_adapter_memory(rows), sampled_epoch=time.time(),adapters=rows,
                      scope='windows_gpu_adapter_upper_bound', producer_pid=os.getpid())
         timing={}
-        result=record_operation(lambda:atomic_json(output,value,timing=timing))
+        result=record_operation(lambda:publish_live_snapshot(output,value,timing=timing))
         if result['failure_kind']:
             detail=dict(result,operation='snapshot',sampled_epoch=value['sampled_epoch'],failed_epoch=time.time(),stop_seen=stop_file.exists(),timing=dict(timing))
             failure_note(failure_fd,detail)
             raise RuntimeError('snapshot_recording_failed')
         # 기록 I/O가 막히면 생산자는 종료하며 독립 guard가 stale snapshot을 거절한다.
         history=output.with_name(output.stem+'.history.private.jsonl')
-        result=record_operation(lambda:append_json(history,value))
+        result=record_operation(lambda:append_json(history,value,sync=False))
         if result['failure_kind']:
             failure_note(failure_fd,dict(result,operation='history',failed_epoch=time.time(),stop_seen=stop_file.exists()))
             raise RuntimeError('history_recording_failed')
