@@ -63,10 +63,13 @@ class MemoryMonitorTests(unittest.TestCase):
 
     def test_exit_during_rss_sample_preserves_worker_exit_code(self):
         def raced(pid):
-            time.sleep(.5)
+            release.write_text('ready')
+            runner._ACTIVE_WORKERS[-1].wait(timeout=3)
             raise ConfigError('memory_monitor_unavailable')
         with temporary_folder() as name,patch.object(runner,'_memory',side_effect=raced):
-            result=self.run_dummy(Path(name),'import time;time.sleep(.1);raise SystemExit(7)')
+            release=Path(name)/'release'
+            code='import time;from pathlib import Path\np=Path('+repr(str(release))+')\nwhile not p.exists(): time.sleep(.01)\nraise SystemExit(7)'
+            result=self.run_dummy(Path(name),code)
             self.assertEqual(result['worker_returncode'],7)
             self.assertEqual(result['reason'],'worker_failed')
             self.assertNotIn('monitor_failure',result)

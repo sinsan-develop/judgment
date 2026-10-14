@@ -2,6 +2,7 @@
 
 ## 2026-10-14 수정 감시 코드 A/B 재실행1회 승인 / 담당 어울
 
+- 현지사전gate1오류:dummy exit가parent poll보다빨라의도한/proc경합미발생,monitor_observation없어시험KeyError. 실제학습Popen0/trial미생성/승인학습1회미소진. 시험release파일+실제worker.wait로경합명시동기화,production변경0. 해당사전container/producer종료확인후gate다시검증,학습자동재시도아님.
 - 직접승인:기존GPU6GiB/전체1800초/설정유지,A정상88완료·저장·reload·평가후에만B,재시도0/final-test열기0. 승인1회 trial approved-monitor-retry-20261014-01,기존실패보존.
 - /proc실패시종료여부분류를독립private packet·exit파일·결과에명시하는최소추가. worker poll값을종료요청전에저장하며 exited/running은해당검사시점관측이고실패이전정확한시간순서를추정하지않음. failedPID/errno/State와최종returncode함께보존. TDD2개미기록RED후구현,모델없는영향시험만수행.
 - 계획자원:PCWSL judgment-ab-approved-monitor-retry-20261014-01 container1개/networknone/RAM4g+총RAMswap8g/기존immutable image/GPU연결과ownCIMmonitor1개. 해당자원만종료,로그원문가림·private보존/역복사0/기타서비스변경0. 순서는안전SHA→현지짧은분류시험→baseline≤6→1회A/B→증거·원본보존·정리·보고.
