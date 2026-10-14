@@ -238,6 +238,20 @@ def new_trial(root,trial_id):
     return folder
 
 
+def wait_start_samples(snapshot, *, timeout=30., limit=int(2.75*1024**3)):
+    from judgment.gpu_snapshot import validate_gpu_snapshot
+    started=time.time();deadline=time.monotonic()+timeout;last=None;rows=[]
+    while time.monotonic()<deadline:
+        value=load(Path(snapshot));validate_gpu_snapshot(value)
+        stamp=value['sampled_epoch']
+        if stamp>=started and stamp!=last:
+            last=stamp
+            rows=rows+[value] if value['bytes_used']<=limit else []
+            if len(rows)==3:return rows
+        time.sleep(.2)
+    raise ValueError('start_headroom_unavailable')
+
+
 def run(root,*,trial_id=None):
     from judgment.contracts import RunConfig
     from judgment.replay import install_final_test_guard, validate_replay_files, remaining_trial_seconds
@@ -270,6 +284,16 @@ def run(root,*,trial_id=None):
             values = deepcopy(arm_config(root, folder, arm, preparation).values)
             values['resources']['time_limit_seconds'] = remaining_trial_seconds(overall_start, time.monotonic())
             config = bind(values)
+            if arm=='B':
+                import torch
+                gc.collect();torch.cuda.empty_cache()
+                release=dict(allocated_bytes=torch.cuda.memory_allocated(),reserved_bytes=torch.cuda.memory_reserved(),
+                             active_training_workers=len(__import__('judgment.runner',fromlist=['_ACTIVE_WORKERS'])._ACTIVE_WORKERS))
+                save(folder/'A.release.private.json',release,immutable=True)
+                if release['allocated_bytes'] or release['reserved_bytes'] or release['active_training_workers']:
+                    raise ValueError('A_resources_not_released')
+            samples=wait_start_samples(snapshot,timeout=min(30.,remaining_trial_seconds(overall_start,time.monotonic())))
+            save(arm_folder/'start-headroom.private.json',dict(limit_bytes=int(2.75*1024**3),samples=samples),immutable=True)
             preflight(config)
             verified = validate_replay_files(config)
             if sha(initial_weight) != initial_sha:

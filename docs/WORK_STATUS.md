@@ -1,5 +1,11 @@
 # judgment 작업현황
 
+## 2026-10-14 최종 2.75GiB 조건 A/B1회 직접 승인 / 담당 어울
+
+- 승인범위:fresh3연속전체GPU≤2.75GiB/기존설정·6GiB·총1800초/A정상완료후GPUallocated/reserved0·activeworker0확인후새fresh3표본으로B재검사/동일초기/checkpoint불변/보정·선택만/final-test열기0/실패자동재시도0·마지막단계·완료갱신·독립오류근거보고. trial approved-final-gate-ab-20261014-01/기존입력697노출88·B280선별49잠정수정·ID그룹순서고정.
+- 최소실행보완:각arm전 fresh조건확인30초내·3개서로다른시각·고점유표본시연속수reset/초과시미시작, B전torchgc/empty_cache뒤allocated/reserved/active_training_workers0기록검사. 설정·점수·학습함수변경0. 시작조건2시험RED→2PASS/diffcheckPASS. 안전sourcecommit/push→PCWSLexactSHA→ownproducer+기존imageowncontainer1·networknone·RAM4+총swap8·독립GPU6/총1800감시→승인1회→이번자원만정리. 역복사·타서비스중지0.
+
+
 ## 2026-10-14 snapshot 종료 진단·임시 실제 학습 메모리 검증 / 담당 어울
 
 - 최종공동PASS:source d7512ee02c0d503990556665cffa46bbc6127e64/probe training-memory-final-20261014-01/fresh3모두2.514442GiB/worker60.099초exit0·전체78.236초/producerexit0·55GPU표본·최대간격4.888초·오류0. selection374+forward/backward각16+AdamW2 enter/exit전수일치/head31변경/원본입력·초기가중치hash불변/검증가중치저장재사용0. 자체peakallocated1.742301/reserved1.888672/host4.762081GiB<6/추가2.247639GiB/피크첫기록training_backward exit. workerfatal0·일반delay1비치명/모델해제후3.965초까지host관측. ownproducer15736·container잔류0. 최종4시험+snapshot6+telemetry19중18PASS1skip/PCWSL4PASS/공개보고docs/TRAINING_MEMORY_START_GATE.md. 전체88·저장reload미검증/A-B0/final-test0/타프로그램종료0/역복사0.
