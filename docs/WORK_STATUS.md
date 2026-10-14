@@ -7,7 +7,8 @@
 - 연결:worker단계/CPU·기존GPUallocator heartbeat·AdamW pre/post hook/고정upstream모델로드·학습전selection·train_model관측및복원,private출력pipe가림,hostadapter계수시계열·학습전baseline,stop의최대50ms best-effort기록후finally owned종료. 정상기록은atomic+fsync/최대200ms 대기,실패시완료를주장하지않고중단. 모의/코드점검중 nullcontext 로컬import shadow오류1회수정,후속43 영향PASS. 변경구현은ML수학/순서/6GiB설정에관여하지않는다.
 - 다음:추가pipeline 모의시험·필수영향검사·최종독립review1회→보완1회→안전checkpoint와PCWSL동일SHA의네트워크차단CPU/모의검증. own일회성시험container만생성/종료,학습/실GPUcontext/자료열기/역복사0. 실행환경준비를다시설치하거나수동자료검토를반복하지않는다.
 - 독립review1회 Critical0/Important2/Minor0:SIGTERM무시worker가남을수있음/실제trigger snapshot 연결부족. 각각RED확인후owned terminate+kill,판정에사용한thread-local snapshot/current RAM·GPU·disk·elapsed/한도/판정시각그대로기록으로1회수정. 기록실패·hang여전히최대50ms best-effort뒤finally 종료. 재리뷰없음. Windows영향49실행/48PASS/POSIX1SKIP,추가producer시계열+baseline1시험PASS. POSIX skip는PCWSL에서실제SIGTERM무시child·무관child보존으로확인할예정.
-- PCWSL최초모의50시험:45PASS/4ERROR/1FAIL. 実I/O의 append/atomic fsync각약60~90ms와writer경합이초기200ms대기를초과,stop의fsync도50ms를초과해정상packet공개전강제exit. 권한/자료/모델문제아님. 합성6회I/O probe로원인확인후전용임시파일제거. 정상기록최대1초로제한하고독립guard는그기록을기다리지않는다. stop packet만atomic공개후sync를시도하며최대50ms뒤owned kill,stop동기화는best_effort로표시. 완료step/단계의정상기록은여전히fsync후atomic. 6GiB/학습/1800초변경0. 수정된모의검증후PCWSL에다시동일SHA적용예정.
+- PCWSL최초모의50시험:45PASS/4ERROR/1FAIL. 실제I/O의 append/atomic fsync각약60~90ms와writer경합이초기200ms대기를초과,stop의fsync도50ms를초과해정상packet공개전강제exit. 권한/자료/모델문제아님. 합성6회I/O probe로원인확인후전용임시파일제거. 정상기록최대1초로제한하고독립guard는그기록을기다리지않는다. stop packet만atomic공개후sync를시도하며최대50ms뒤owned kill,stop동기화는best_effort로표시. 완료step/단계의정상기록은여전히fsync후atomic. 6GiB/학습/1800초변경0.
+- PCWSL二次모의50시험:49PASS/1FAIL. 정상close가進행중sampler를100ms만기다린뒤살아있다고판정하는경합. 합성sampler완료지연으로RED재현→정상close의최대1초join으로GREEN. 상한중단경로는normalclose를호출하지않고50ms best_effort/owned강제종료유지,관련3시험PASS. 다음새SHA의PCWSL최종51시험확인. 실학습실패/재실행으로계산하지않는모의구현오류이며각실패로그는별도파일로보존.
 
 ## 2026-10-14 PCWSL 실패 현지 진단·최소 기록안 / 담당 어울
 

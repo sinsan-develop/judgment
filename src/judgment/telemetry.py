@@ -207,7 +207,7 @@ class Telemetry:
 
     def __exit__(self,exc_type,exc,tb):
         if self in _ACTIVE: _ACTIVE.remove(self)
-        self.stop_sampling.set();self.sampler.join(.1)
+        self.stop_sampling.set();self.sampler.join(self.timeout)
         try: self.queue.put_nowait(None)
         except queue.Full: self.failed.set()
         self.thread.join(self.timeout)

@@ -21,6 +21,18 @@ TEST_TMP.mkdir(parents=True,exist_ok=True)
 
 
 class TelemetryTests(unittest.TestCase):
+    def test_normal_close_waits_boundedly_for_inflight_sampler(self):
+        with tempfile.TemporaryDirectory(dir=TEST_TMP) as temporary:
+            t=Telemetry(Path(temporary),role='worker',memory=lambda:{})
+            ready=threading.Event();release=threading.Event();original=t._submit
+            def submit(kind,value,**kwargs):
+                original(kind,value,**kwargs)
+                if value.get('event')=='heartbeat': ready.set();release.wait(.6)
+            t._submit=submit;t.__enter__()
+            self.assertTrue(ready.wait(1.5))
+            timer=threading.Timer(.2,release.set);timer.start()
+            try: t.__exit__(None,None,None)
+            finally: release.set();timer.join()
     def test_host_producer_preserves_adapter_history_and_baseline(self):
         spec=importlib.util.spec_from_file_location('gpu_monitor',Path(__file__).resolve().parents[1]/'docs/monitor_pcwsl_gpu.py')
         monitor=importlib.util.module_from_spec(spec);spec.loader.exec_module(monitor)
