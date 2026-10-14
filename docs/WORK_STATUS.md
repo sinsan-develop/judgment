@@ -2,6 +2,8 @@
 
 ## 2026-10-14 GPU 기여 대조·모델 로드80기록 공동 검증 / 담당 어울
 
+- 최종PASS:source9936e85d4105759040435c48bade6c688391ea93/probe gpu-headroom-joint-20261014-01/3fresh기준모두2.3109436GiB≤4→105.791초exit0/실제model_load exit·지정반복state80개1~80전수일치·sequence정상·fatal/delay로그각0bytes. 자체allocated1307824640/reserved1333788672bytes(1.218/1.242GiB),hostGPUpeak3908644864bytes(3.640GiB)<6. 초기모델hash불변/producerPID11396·owncontainer잔류0/private현지보존/역복사0/optimizer·학습·평가·final-test열기0.
+- 원인정리:최초capstop allocator미초기화에도전체증가/기여프로그램중단시점자료없어확정불가,최종capstop은기존5.778GiB높은점유에model_load장치초기화/이동750MiB자체증가겹침. 현재CIM응용이름Chrome/Steamwebhelper/Whale는과거원인으로확정하지않음·프로그램종료0. 공동검증미완료해소/실제A-B학습697·88/reload/비교는미실행. 공개보고 docs/GPU_ATTRIBUTION_JOINT_VERIFICATION.md작성,별도지시전A-B보류.
 - 직접승인:기존동시점allocator/adapter대조·다른작업이면프로그램식별/자체증가면단계보고·서비스추측종료/상한완화금지·GPU여유확인후모델로드80기록만/A-B보류/final-test0.
 - 로그대조:첫capstop(snapshot/worker차0.043초)실험allocator not_initialized/host6.164GiB,주adaptercommitted2.746→6.134GiB. 최종capstop(차0.050초)baseline5.778GiB/host6.267GiB/실험model_load allocated=reserved786432000bytes(750MiB),직전초기화/장치이동확인. allocator와전체resident·committed범위달라직접차감하지않음. 중단시점process PID계수없어프로그램확정불가.
 - 현재read-only CIM adapter계수약2.34GiB/응용GPU process Chrome·Steamwebhelper·Whale등확인,명령행·원문조회0. dwm process Dedicated값이전체adapter Dedicated보다커process합산으로과거원인단정0/프로그램종료0.

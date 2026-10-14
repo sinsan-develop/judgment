@@ -2,6 +2,8 @@
 
 2026-10-14 / 담당 어울 / **코드·안전 경계 검증 완료, 모델 로드+80회 반복 기록 공동 검증은 GPU 상한 중단으로 미완료**
 
+후속 같은 날 GPU 여유를 확인한 공동 검증은 **105.791초/모델 로드·80회 기록 정상 완료**했다. [후속 GPU 기여 대조·공동 검증 보고서](GPU_ATTRIBUTION_JOINT_VERIFICATION.md)를 최신 공동 검증 판정으로 사용한다. 아래 중단 계측은 당시 이력으로 보존한다. A/B 학습은 계속 보류한다.
+
 ## 경로와 재현
 
 실제 `/home/daon/deploy/judgment/.work/runs` 및 부모 경로는 symlink가 없고 WSL 내부 `/dev/sdd`, ext4에 있다. Windows 공유 경로가 아니다. 컨테이너 `/workspace`는 이 WSL 프로젝트를 bind한다.
