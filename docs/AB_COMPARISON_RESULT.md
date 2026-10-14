@@ -15,7 +15,7 @@
 | A 실제 optimizer 갱신 | 미확인 | 88회 |
 | B 실행 | 미시작 | 697노출·88회 |
 
-GPU 계수는 각 Windows adapter의 `max(DedicatedUsage+SharedUsage, TotalCommitted)`를 합산한 값이다. 감시를 위해 GPU context를 만들지 않고 stale/형식/승인 binding 오류를 차단한다. 다른 process의 사용과 committed memory도 포함하므로 **판단 엔진 단독의 실제 resident VRAM**으로 표현하지 않는다. 종료 후 adapter 이름을 대조했으며 `_Total` 행 중복 합산은 없었다. 중단 순간 adapter별 resident/committed 내역과 어느 모델 단계가 상승에 기여했는지는 저장되지 않아 미확인이다.
+GPU 계수는 각 Windows adapter의 `max(DedicatedUsage+SharedUsage, TotalCommitted)`를 합산한 값이다. 감시를 위해 GPU context를 만들지 않고 stale/형식/승인 binding 오류를 차단한다. 다른 process의 사용과 committed memory도 포함하므로 **판단 엔진 단독의 실제 resident VRAM**으로 표현하지 않는다. 별도의 종료 후 adapter 이름 조회에서는 그 조회 시점의 `_Total` 행이 없었다. 중단 순간 adapter 이름·resident/committed 내역이 저장되지 않아 피크 집계의 중복 여부와 어느 모델 단계가 상승에 기여했는지는 미확인이다.
 
 실행 코드 checkpoint는 `49b0060dcffed35b43e94fb099e3fee529e5588a`다. Windows와 PCWSL의 exact SHA·tracked clean을 대조했다. PCWSL 전용 Python3.12.3/PyTorch2.13.0+rocm7.2 환경에서 Linux 고정37패키지 공식 hash/size, Laya exact upstream, pip check, 영향39시험과 실제 GPU 모델/tokenizer 경계1시험을 통과했다. 첫 모델 gate의 GPU 라이브러리 연결 오류는 목적경로를 수정하여 해결했고 실패 로그를 보존했다. 이후 학습 시도의 자원 상한 실패는 별개의 결과다. 기존 서비스·driver·권한을 변경하지 않았다.
 

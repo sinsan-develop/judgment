@@ -1,5 +1,11 @@
 # judgment 작업현황
 
+## 2026-10-14 PCWSL 실패 현지 진단·최소 기록안 / 담당 어울
+
+- 신산님 직접지시:현지실패로그읽기/중단단계·GPU집계확인/미확인명시/기록보완안제시만. 재학습·서비스종료·6GiB변경없음,Windows역복사는필수일때만별도묶음승인.
+- 현지HEAD854b564 clean,실행49b0060과관련실행코드차이0,고정upstream clean. A호출/worker기동/입력검증은확인,15.68초host상한6.30GiB로exit3/B미시작. worker optimizer null/unverified·summary/output없음. 내부모델load/기준추론/학습전selection/optimizer중정확한단계는기록없어미확인,checkpoint부재로0회추론금지.
+- GPU는adapter별 max(dedicated+shared,committed)의host합계이며pid별자체VRAM아님. 마지막snapshot은중단후값,adapter별피크내역/시계열없음. worker출력DEVNULL/optimizer메모리카운터완료후저장/os._exit로중간증거유실확인. 제안 docs/PCWSL_FAILURE_DIAGNOSIS_PLAN.md에단계전후·성공step즉시atomic저장·자체allocator/RSS와host시계열분리·종료전stop기록및미확인경계정리. 구현/시험/학습미실행,진단에역복사불필요. 현지검색rg미설치1회는grep읽기로대체.
+
 ## 2026-10-14 PCWSL 비공개 전송 승인·실제 A/B 착수 / 담당 어울
 
 - 신산님이18파일약684MB의PCWSL전용 .work 전송을명시승인. 승인allowlist만SSH전송/전용권한해제압축,17payload파일의hash·크기전부일치(683,964,215bytes),final-test·과거시험점수·credential·원본ZIP전송0. 송수신임시tar만삭제,사용자원본/입력/모델/증거보존.
