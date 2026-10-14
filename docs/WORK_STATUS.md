@@ -2,9 +2,12 @@
 
 ## 2026-10-14 A checkpoint 보존·snapshot replace 보완·재학습없는 재개 판단 / 담당 어울
 
+- 최종검증:source da0c512a860248dbe41936ad9693d0c9575d9628/모델없는snapshot-slots-600-20261014-01 600.523초producerexit0/486표본·2967정상읽기·실패0·오류로그0/최대나이5.054초·간격5.083초(15초이내). cap-isolation actualslot6GiB+1byte·다른slot미완성→owneddummyexit3/vram_limit·unrelateddummy생존/실제서비스조작0. 전체130중126PASS4skip/모델부하아래새슬롯아직미검증. 추가A-B·모델로드·평가0/final-test열기0.
+- 최종판단:A170F16 tensor 전체CPU payload연속·shapebyte수일치·NaNInf0/키shape초기와동일·encoder변경0/head32변경/cfg승인과동일/88optimizerexit·697노출보존. 최종설정·보고서·summary·provenance는없음. A재학습없이checkpoint복구평가조건부가능/FP32live완전동일복원불가·저장모델기준대칭비교로명시/실제strictload미검증. 후속A-only평가→자원해제/fresh3≤2.75→동일초기B697·88→calibrationselection 비교·6GiB·final-test0·재시도0를제안. 원실행568.763초차감한추가단일1230초(누적1798.763초이내)/부족시B미시작·초과시중단. 복구provenance/후속분기구현과실행은별도승인후/기존run호출A재학습금지. 보고 docs/A_CHECKPOINT_RECOVERY_REVIEW.md.
+
 - 직접범위:A가중치/설정/완료기록먼저확인→snapshot최소보완·모델없는검증→A재학습없이평가+B가능성·추가범위시간제안. 자동실행·평가·모델로드·B학습0/6GiB·final-test봉인유지.
 - A근거:run-e5e31a2972684fdb98dd99e674ff1741/output/checkpoint_latest/model.safetensors643835524bytes/170tensor/headeroffset범위PASS/shaecb8e425645ad42755841e9d960f0c03e9ea361a1bb960912d2c8d8a0b2f1339. 초기대조tensor키shape동일/encoder변경0·head변경32/F16·cfgdiff0. train_model exit후aftereval진입/optimizerexit88·노출697. 최종outputmodel·최종cfg·questions·train_report·summary없음/provenance도checkpoint없음. checkpoint·tokenizer·encoderconfig는존재하나최종완료아님. 저장upstream은fp32live→halfCPU로저장,완전동일live평가복구불가/저장모델기준A평가로명시필요.
-- 실패근거:producer timeout1.000330초/stopfalse/serialize open write flush fsync(skip) close완료·replace미완료,물리rename·스케줄링기여미구분.resource_monitor_unavailable/stale.최소보완:일시GPU2slot교대flush·완전JSON중최신fresh선택·rename/fsync0·1초상한·15초stale·6GiB유지/baseline-startguard공통reader/기존primary호환.replace실패주입RED→6producer시험PASS/tornslotfallback/stale/cap値PASS/snapshot6/startgate2/telemetry19중18PASS1skip.
+- 실패근거:producer timeout1.000330초/stopfalse/serialize open write flush fsync(skip) close완료·replace미완료,물리rename·스케줄링기여미구분.resource_monitor_unavailable/stale.최소보완:일시GPU2slot교대flush·완전JSON중최신fresh선택·rename/fsync0·1초상한·15초stale·6GiB유지/baseline-startguard공통reader/기존primary호환.replace실패주입RED→6producer시험PASS/tornslotfallback/stale/cap값PASS/snapshot6/startgate2/telemetry19중18PASS1skip.
 - 현지계획:안전commit/push→PCWSLexactSHA→모델없는600초CIMproducer(이전약534초중단초과)/실제readerfresh감시·정상요청종료·다른서비스보존/추가A-B0·모델로드0/결과후판단report·재개승인안만.
 
 
