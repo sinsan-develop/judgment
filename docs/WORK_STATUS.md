@@ -2,6 +2,7 @@
 
 ## 2026-10-14 atomic_json 지연 계측·최소 보완 / 담당 어울
 
+- 최종판정:현지 ea17e36 모델없는안전5시험2.085초전부PASS/실제worker종료·unrelated생존확인. 일반delay경고뒤계속하다실제hostGPU6.267GiB에서중단,모델로드+지정80회공동검증미완료. 계속A/B보류/추가모델시도0,가용GPU여유에서공동재검증필요. 원본초기가중치hash불변/producer9362·9818·10248잔류0/owncontainer잔류0/private현지보존. 공개보고 docs/ATOMIC_WRITER_DIAGNOSIS.md에계측전후·한계·미검증기록.
 - 보완후시험:6994eba 첫모델전용시험writermax0.2606초/atomic0.2605/lock0.019ms,delay/failure로그없음이나37.716초hostGPU6.164GiB로exit3. 8409aab 최종시험model_load중63.103초hostGPU6.267GiB로exit3,일반1초초과delay로그1행을남기고계속한뒤실제vram_limit중단확인. 학습/optimizer0/모델로드+80반복완료미검증,상한완화·서비스중지0. 현지안전시험실제mem조회실패·6GiB+1byte owned종료/unrelated생존PASS,FD시험은30ms인위지연상한을종료에도써서close검사실패→시험만지연주입30ms/종료1초분리. product1초유지.
 - 독립review1회Critical0/Important0/Minor1(FD latewriter 재사용경합)→dupFD를note thread가소유/close,TDD RED→GREEN5PASS/재리뷰없음. Windows최종전체116중112PASS/4조건skip(이번test-only보완전),모델없는추가현지시험으로최종확인. 코드계측결과는스케줄링/GIL·외부부하포함이라단순전후성능비교아님.
 - 재현결과:sourcee586331 모델로드중exit3/독립submit.wait_timeout writer.atomic_json/완료0,52완료계측. writer전체max1.6336초/atomic max0.6505초/serialize max0.103ms/fsync중앙100.280ms·max221.113ms/lock max260.011ms/queue max0.280ms. 각구간벽시계는스케줄링·GIL재개도포함,물리디스크장애확정0. 완료대기에는append+atomic 2회durable fsync가누적되며state lock을유지한I/O대기가확인됨.
