@@ -1,8 +1,33 @@
 # 승인된 A/B 비교 실행 기록 — A 중단·B 미시작
 
-2026-10-14 / 담당 어울 / **최신 승인 재실행: A memory_monitor_unavailable, B 미시작, 비교 결과 미산출**
+2026-10-14 / 담당 어울 / **최신 승인 재실행: A worker telemetry_unavailable/exit3, B 미시작, 비교 결과 미산출**
 
-## 최신 판정 — 기록 보완 후 승인된 PCWSL 재실행 1회
+## 최신 판정 — 수정 감시 코드 승인 재실행 1회
+
+시도 `approved-monitor-retry-20261014-01`, 실행 소스 `d0d5b876ed2c714d985c7668e1adb13948a10420`. 현지 사전 시험은 최초 dummy 종료 타이밍 때문에 의도한 조회 경합이 발생하지 않아 1개 실패했다. 실제 학습은 시작하지 않은 상태에서 시험을 release 파일·실제 wait로 동기화했다. 이후 현지 4개 시험 PASS/장시간 시험1개 skip 확인 후 승인된 실제 A/B 1회를 실행했다. 이전 180초 검증을 반복하거나 학습을 자동 재시도하지 않았다.
+
+시작 GPU 기준값은 **0.8677GiB≤6GiB**였다. A parent 관측 경과 **3.735초**, worker 자체 guard 경과 **1.762초**에 worker가 `telemetry_unavailable`을 감지해 **exit3**으로 스스로 중단했다. parent 결과의 `worker_failed`는 이 종료의 요약이다. parent의 `termination_requested=false`, 종료 코드3 기록을 확인했다. **A 완료 조건 미충족으로 B 미시작, A/B 결과 미산출, 자동 재시도0회**다.
+
+| 항목 | 마지막 기록/표본 |
+|---|---:|
+| 마지막 worker 단계 | `model_load` |
+| 마지막 저장 완료 optimizer | **0회**, `not_started` |
+| 종료 순간 정확한 optimizer 완료 수 | 미확인; 저장 기록 age 약1.228초 |
+| worker 자체 RSS | 38,576,128bytes |
+| worker 자체 GPU allocator | `not_initialized`; allocated/reserved 값 없음 |
+| parent+worker RAM 피크 | 82,612,224bytes |
+| 전체 host GPU 피크 | **930,045,952bytes ≈0.866GiB**, 6GiB 이하 |
+| 저장 표본 | 17,962,839,642bytes, 30GiB 이하 |
+
+마지막 유효 snapshot의 adapter 계수행1/2/3 적용값은 각각831,488 /30,343,168 /898,871,296bytes다. 적용값은 각 행 `max(DedicatedUsage+SharedUsage, TotalCommitted)`이며 실험 자체 VRAM이 아니다. 원문 없는 전체 계수는 위 GPU 피크로 합산했다.
+
+이번에는 `/proc` 조회 오류와 그에 따른 `monitor_observation`이 **발생하지 않았다**. 따라서 worker가 먼저 사라져 조회가 실패한 사례가 아니라 **worker의 독립 감시가 기록 실패 flag를 확인해 스스로 중단한 사례**다. 코드상 해당 flag는 기록 쓰기 예외, queue 부족, bounded 기록 대기 실패, sampler 예외에서 설정될 수 있다. 어느 하위 조건이 발생했는지는 구분 기록이 없어 미확인이다. 마지막 `model_load` heartbeat 이후 기록이 멈춘 사실만으로 fsync 시간 초과·권한·디스크 오류·모델/driver 문제를 확정하지 않는다. host GPU producer는 exit0/오류 로그0bytes였다. 이번 실행 이후 추가 수정·학습 재시도는 하지 않았다.
+
+원본8파일과 초기 가중치 hash 불변을 확인했다. final-test는 내용/hash를 다시 열지 않았고 calibration/selection 평가도 도달하지 못했다. 선별280건/잠정 정답49건·동일 초기·697노출/88 optimizer 계획·1800초·6GiB·학습 설정을 유지했으나 실제 완료 조건은 충족하지 못했다. 선별·정답 수정·반복 노출의 합친 효과는 미측정이다.
+
+이번 producer PID6972와 컨테이너 잔류0을 확인했고, 기존 서비스·driver 변경과 Windows 비공개 역복사는 없다. PCWSL trial에 `interrupted.summary.private.json`, worker 종료/중단/단계 기록과 고정 입력을 보존했다. 원문 출력 가능성이 있던 첫 진단 명령은 자동 승인 검토가 거절하여 실행되지 않았고, 이후 오류 코드·숫자·안전 메타데이터만 현지에서 집계했다. 승인 학습1회는 소진됐으며 새 학습은 시작하지 않는다.
+
+## 이전 시도 — 기록 보완 후 승인된 PCWSL 재실행 1회
 
 시도 `approved-retry-20261014-01`, 실행 소스 `262cfada722a1c7166ac4850c8d9ea4d7307e039`. 시작 직전 기록된 전체 GPU 기준값은 **0.7083GiB**로 6GiB 이하였다. A worker 실행 약 **94.02초**에 `memory_monitor_unavailable`로 중단됐다. **A 정상 완료 조건을 충족하지 못해 B는 실행하지 않았고 자동 재시도는 0회다.** 모델 로드·입력 검사·초기 tensor 검사를 지난 뒤 마지막 저장 단계는 학습 전 `dry_run`이었다. 평가까지 도달하지 않아 A/B 비교 결과와 품질 판정은 없다.
 

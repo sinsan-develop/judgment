@@ -2,6 +2,9 @@
 
 ## 2026-10-14 수정 감시 코드 A/B 재실행1회 승인 / 담당 어울
 
+- 종료판정:source d0d5b876ed2c714d985c7668e1adb13948a10420 현지gate4PASS/장시간1skip뒤승인학습1회실행. baseline0.8677GiB≤6. A parent3.735초/workerguard1.762초 telemetry_unavailable로worker자체exit3,parent termination_requestedfalse/요약worker_failed. /proc오류0/상태분류packet발생없음. 마지막model_load/완료optimizer0/not_started/recordage1.228초/정확한종료수미확인. B미시작/평가미실행/비교미산출/자동재시도0.
+- 자원/보존:hostGPUpeak930045952bytes(0.866GiB)<6; parent+workerRAMpeak82612224bytes; 자체RSS38576128bytes/GPUallocator not_initialized. adapter적용bytes831488/30343168/898871296,disk17962839642bytes<30GiB. 원본8파일·초기가중치hash불변/final-test내용·hash열기0. owncontainer/producerPID6972잔류0,다른서비스·driver변경0/역복사0. 현지trial interrupted.summary.private.json·실패/종료기록보존.
+- 미확인:telemetry.failed flag를설정한쓰기예외/queue/대기/sampler중정확한하위원인미기록,추정확정0. 원문마지막줄출력가능한진단명령자동승인거절1회→원문없는오류코드·숫자현지집계로완료,거절명령실행0. 공개결과 docs/AB_COMPARISON_RESULT.md 갱신. 승인1회소진/추가수정·학습재시도0. 다음은공개기록checkpoint·원인및미검증보고.
 - 현지사전gate1오류:dummy exit가parent poll보다빨라의도한/proc경합미발생,monitor_observation없어시험KeyError. 실제학습Popen0/trial미생성/승인학습1회미소진. 시험release파일+실제worker.wait로경합명시동기화,production변경0. 해당사전container/producer종료확인후gate다시검증,학습자동재시도아님.
 - 직접승인:기존GPU6GiB/전체1800초/설정유지,A정상88완료·저장·reload·평가후에만B,재시도0/final-test열기0. 승인1회 trial approved-monitor-retry-20261014-01,기존실패보존.
 - /proc실패시종료여부분류를독립private packet·exit파일·결과에명시하는최소추가. worker poll값을종료요청전에저장하며 exited/running은해당검사시점관측이고실패이전정확한시간순서를추정하지않음. failedPID/errno/State와최종returncode함께보존. TDD2개미기록RED후구현,모델없는영향시험만수행.
