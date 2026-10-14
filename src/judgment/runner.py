@@ -8,11 +8,37 @@ import subprocess
 import sys
 import time
 import uuid
-from contextlib import contextmanager
+import threading
+from contextlib import contextmanager, nullcontext
 from .contracts import RunConfig, RunEvidence, Report, ConfigError, validate_run_config
 from .data import to_laya_row, connected_groups, bundle_digest
+from .telemetry import bounded_save, stop_evidence, Telemetry, current_telemetry, drain_output, gpu_baseline, observe_upstream_stages
 
 _ACTIVE_WORKERS=[]  # 이 process가 시작한 학습 worker만 중단한다.
+_GPU_OBSERVATIONS=threading.local()
+
+
+def _resource_trigger(c,ram,vram,disk,elapsed):
+    return dict(decision_epoch=time.time(),decision_monotonic=time.monotonic(),ram_bytes=ram,
+        gpu_upper_bound_bytes=vram,disk_bytes=disk,elapsed_seconds=elapsed,
+        limits={k:c['resources'][k] for k in ('time_limit_seconds','ram_limit_bytes','disk_limit_bytes','vram_limit_bytes') if k in c['resources']},
+        gpu_snapshot=getattr(_GPU_OBSERVATIONS,'snapshot',None))
+
+
+def _stop_owned(run_dir,observations,reason,trigger=None):
+    # 진단 write/read/fsync가 멈추거나 예외여도 종료 경로는 반드시 실행한다.
+    try:
+        current=current_telemetry()
+        progress_folder=current.folder if current is not None else run_dir
+        bounded_save(run_dir/'limit_failure.json',lambda:stop_evidence(progress_folder,dict(observations,reason=reason,trigger=trigger)))
+    finally:
+        for child in tuple(_ACTIVE_WORKERS):
+            try:
+                if child.poll() is None:
+                    try: child.terminate()
+                    finally: child.kill()
+            except OSError: pass
+        os._exit(3)
 
 
 def resource_budget(resources, *, free_bytes):
@@ -91,15 +117,21 @@ def assess_weight_change(before, after):
 
 
 @contextmanager
-def observe_optimizer_steps():
-    from torch.optim.optimizer import register_optimizer_step_post_hook
+def observe_optimizer_steps(telemetry=None):
+    from torch.optim.optimizer import register_optimizer_step_post_hook, register_optimizer_step_pre_hook
     observed={'count':0,'by_optimizer':{}}
     def on_step(optimizer,args,kwargs):
         name=type(optimizer).__name__;observed['count']+=1
         observed['by_optimizer'][name]=observed['by_optimizer'].get(name,0)+1
+        if telemetry is not None and name=='AdamW': telemetry.optimizer_complete()
+    def before_step(optimizer,args,kwargs):
+        if telemetry is not None and type(optimizer).__name__=='AdamW': telemetry.optimizer_start()
     handle=register_optimizer_step_post_hook(on_step)
+    pre_handle=register_optimizer_step_pre_hook(before_step) if telemetry is not None else None
     try: yield observed
-    finally: handle.remove()
+    finally:
+        handle.remove()
+        if pre_handle is not None: pre_handle.remove()
 
 
 def completed_training_evidence(change,*,optimizer_updates,reload_verified,encoder_changed):
@@ -167,10 +199,14 @@ def _memory(pid):
 
 
 def _gpu_memory(pid):
+    _GPU_OBSERVATIONS.snapshot=None
     snapshot = os.environ.get('JUDGMENT_GPU_MEMORY_SNAPSHOT')
     if snapshot:
         from .gpu_snapshot import read_gpu_snapshot
-        return read_gpu_snapshot(snapshot)
+        observation={}
+        value=read_gpu_snapshot(snapshot,observation=observation)
+        _GPU_OBSERVATIONS.snapshot=observation or None
+        return value
     try:
         if os.name == 'nt':
             # WDDM은 process memory를 N/A로 반환한다. 전체 device 합계는
@@ -230,27 +266,49 @@ def run_training(config, splits):
     cmd = [sys.executable,'-m','judgment','_train-worker','--config',str(run_dir/'config.json')]
     env = dict(os.environ,HF_HUB_OFFLINE='1',TRANSFORMERS_OFFLINE='1',TOKENIZERS_PARALLELISM='false',
                PYTHONPATH=str(Path(c['canonical_checkout'])/'src'))
-    start = time.monotonic(); peak_ram = peak_vram = 0; failure = None
-    proc = subprocess.Popen(cmd,env=env,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+    snapshot=c['resources'].get('gpu_memory_snapshot_path')
+    if snapshot: gpu_baseline(snapshot,run_dir/'gpu.before-worker.private.json')
+    with Telemetry(run_dir,role='parent',arm=c.get('experiment',{}).get('arm')) as telemetry:
+        return _training_process(config,run_dir,cmd,env,replay_verified,telemetry)
+
+
+def _training_process(config,run_dir,cmd,env,replay_verified,telemetry):
+    c=config.values
+    start = time.monotonic(); peak_ram = peak_vram = 0; failure = None;trigger=None
+    telemetry.event('worker_launch',event='enter')
+    proc = subprocess.Popen(cmd,env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     _ACTIVE_WORKERS.append(proc)
+    drains=[drain_output(proc.stdout,telemetry,'stdout'),drain_output(proc.stderr,telemetry,'stderr')]
     try:
         while proc.poll() is None:
             ram = _memory(proc.pid)+_memory(os.getpid()); vram = _gpu_memory(proc.pid) if c['device'] == 'cuda' else 0
             peak_ram,peak_vram = max(peak_ram,ram),max(peak_vram,vram)
             disk = _storage_bytes(config,run_dir)
+            trigger=_resource_trigger(c,ram,vram,disk,time.monotonic()-start)
             if time.monotonic()-start > c['resources']['time_limit_seconds']: failure = 'time_limit'
             elif ram > c['resources']['ram_limit_bytes']: failure = 'ram_limit'
             elif vram > c['resources'].get('vram_limit_bytes',float('inf')): failure = 'vram_limit'
             elif disk > c['resources']['disk_limit_bytes']: failure = 'disk_limit'
+            elif telemetry.failed.is_set(): failure='telemetry_unavailable'
             if failure: break
+            telemetry.event('worker_running',event='heartbeat')
             time.sleep(.2)
     except ConfigError as e:
         if proc.poll() is None: failure = e.code
     finally:
-        if proc.poll() is None: proc.terminate()
+        try:
+            if failure:
+                bounded_save(run_dir/'limit_failure.json',lambda:stop_evidence(run_dir,dict(reason=failure,
+                    peak_ram_bytes=peak_ram,peak_vram_upper_bound_bytes=peak_vram,elapsed_seconds=time.monotonic()-start,trigger=trigger)))
+        finally:
+            if proc.poll() is None:
+                try: proc.terminate()
+                finally:
+                    if failure: proc.kill()
         try: proc.wait(timeout=10)
         except subprocess.TimeoutExpired: proc.kill(); proc.wait()
         _ACTIVE_WORKERS.remove(proc)
+        for thread in drains: thread.join(.1)
     summary_path = run_dir/'summary.json'
     try:
         final_resource_check(c['resources'],artifact_bytes=sum(p.stat().st_size for p in run_dir.rglob('*') if p.is_file()))
@@ -275,11 +333,25 @@ def run_training(config, splits):
 
 
 def training_worker(config_path):
-    from .laya_adapter import LayaAdapter, offline
     c = RunConfig(json.loads(config_path.read_text(encoding='utf-8')))
+    root=c.values.get('canonical_checkout')
+    allowed=root and config_path.parent.resolve().is_relative_to((Path(root)/'.work').resolve())
+    recorder=Telemetry(config_path.parent,role='worker',arm=c.values.get('experiment',{}).get('arm')) if allowed else nullcontext(None)
+    with recorder as telemetry:
+        try: return _training_worker(config_path,c,telemetry)
+        except BaseException as error:
+            if telemetry:
+                try: telemetry.event(None,event='failed',error_type=type(error).__name__)
+                except ConfigError: pass
+            raise
+
+
+def _training_worker(config_path,c,telemetry):
+    from .laya_adapter import LayaAdapter, offline
+    phase=telemetry.phase if telemetry is not None else lambda stage:nullcontext()
     from .replay import install_final_test_guard, validate_replay_files
     final_test_guard = install_final_test_guard(c)
-    preflight(c)
+    with phase('worker_preflight'): preflight(c)
     c = validate_run_config(c.values,real=True)
     v = c.values; run_dir = config_path.parent
     replay_verified = validate_replay_files(c, training_jsonl=run_dir/'train.jsonl')
@@ -287,10 +359,12 @@ def training_worker(config_path):
         if training_jsonl_digest(run_dir/(role+'.jsonl'))!=v['data_manifest']['file_digests'].get(role):
             raise ConfigError('data_digest_mismatch')
     with _worker_limits(c,run_dir), offline():
-        adapter = LayaAdapter.from_local(Path(v['model_dir']),source_commit=v['source_commit'],model_revision=v['model_revision'],device=v['device'])
+        with phase('model_load'):
+            adapter = LayaAdapter.from_local(Path(v['model_dir']),source_commit=v['source_commit'],model_revision=v['model_revision'],device=v['device'])
         # 실제 tokenize 검사를 모든 학습/selection 행에 수행한 후에만 optimizer로 전달한다.
         from .contracts import validate_request
         probe=None
+        if telemetry: telemetry.event('input_audit',event='enter')
         for role in ('train','selection'):
             for line in (run_dir/(role+'.jsonl')).read_text(encoding='utf-8').splitlines():
                 row = json.loads(line); q = row['questions']['decision']; state = json.loads(row['state'])
@@ -299,31 +373,36 @@ def training_worker(config_path):
                 adapter.audit(req)
                 if probe is None: probe=req
         if probe is None: raise ConfigError('empty_training')
-        base_probe=adapter.score(probe)
+        if telemetry: telemetry.event('input_audit',event='exit')
+        with phase('base_probe'): base_probe=adapter.score(probe)
         if any(not __import__('math').isfinite(x) for x in base_probe.logits): raise ConfigError('nonfinite_base_logits')
-        before = _tensor_manifest(Path(v['model_dir'])/'model.safetensors')
+        with phase('initial_tensor_audit'): before = _tensor_manifest(Path(v['model_dir'])/'model.safetensors')
         from laya.train import dry_run,TrainConfig
-        plan=dry_run(str(run_dir/'train.jsonl'),str(Path(v['model_dir'])),
-                     config=TrainConfig(**training_arguments(c,run_dir/'train.jsonl',run_dir/'selection.jsonl',run_dir/'output')['config']))
+        with phase('dry_run'):
+            plan=dry_run(str(run_dir/'train.jsonl'),str(Path(v['model_dir'])),
+                         config=TrainConfig(**training_arguments(c,run_dir/'train.jsonl',run_dir/'selection.jsonl',run_dir/'output')['config']))
         try: expected_updates=validate_upstream_execution(c,plan)
         except ConfigError as e:
             (run_dir/'summary.json').write_text(json.dumps({'trained':False,'status':'blocked','reason':e.code}),encoding='utf-8')
             raise
         # upstream은 학습 모델을 직접 로드한다. 검사 모델은 먼저 해제해 중복 GPU 점유를 피한다.
+        if telemetry:
+            telemetry.state['expected_optimizer_updates']=expected_updates
+            telemetry.event('probe_model_release',event='enter')
         del adapter.backend.model
         import gc; gc.collect()
         import torch
         if v['device'] == 'cuda': torch.cuda.empty_cache()
         if v['device']=='cuda': torch.cuda.reset_peak_memory_stats()
-        from contextlib import nullcontext
+        if telemetry: telemetry.event('probe_model_release',event='exit')
         from .replay import observe_replay_consumption
         replay_context = nullcontext(None)
         if replay_verified is not None:
             replay_manifest = json.loads(Path(v['experiment']['files']['manifest']['path']).read_text(encoding='utf-8'))
-            replay_context = observe_replay_consumption(replay_manifest)
-        with observe_optimizer_steps() as observed, replay_context as replay_consumption:
+            replay_context = observe_replay_consumption(replay_manifest,telemetry=telemetry)
+        with observe_upstream_stages(telemetry), observe_optimizer_steps(telemetry) as observed, replay_context as replay_consumption, phase('finetune'):
             summary = adapter.finetune(run_dir/'train.jsonl',run_dir/'selection.jsonl',run_dir/'output',config=c)
-        after = _tensor_manifest(run_dir/'output'/'model.safetensors')
+        with phase('trained_tensor_audit'): after = _tensor_manifest(run_dir/'output'/'model.safetensors')
         change = assess_weight_change(before,after)
         encoder_changed=sum(before[k]['digest']!=after[k]['digest'] for k in before if k.startswith('encoder.'))
         gc.collect()
@@ -332,13 +411,13 @@ def training_worker(config_path):
         artifact_sha=hashlib.file_digest((run_dir/'output'/'model.safetensors').open('rb'),'sha256').hexdigest()
         provenance.update(trained_artifact_sha256=artifact_sha,code_revision=v['code_revision'])
         (run_dir/'output'/'judgment_provenance.json').write_text(json.dumps(provenance),encoding='utf-8')
-        reloaded=LayaAdapter.from_local(run_dir/'output',source_commit=v['source_commit'],model_revision=v['model_revision'],device=v['device'])
+        with phase('reload_model'): reloaded=LayaAdapter.from_local(run_dir/'output',source_commit=v['source_commit'],model_revision=v['model_revision'],device=v['device'])
         from safetensors.torch import load_file
         stored=load_file(str(run_dir/'output'/'model.safetensors'))
         live=reloaded.backend.model.state_dict()
         reload_verified=set(live)==set(stored) and all(torch.equal(live[k].detach().cpu(),stored[k].to(dtype=live[k].dtype)) for k in stored)
         del stored,live
-        reload_scores=reloaded.score(probe)
+        with phase('reload_probe'): reload_scores=reloaded.score(probe)
         reload_verified=reload_verified and len(reload_scores.logits)==len(base_probe.logits) and all(__import__('math').isfinite(x) for x in reload_scores.logits)
         result=completed_training_evidence(change,optimizer_updates=observed['by_optimizer'].get('AdamW',0),reload_verified=reload_verified,encoder_changed=encoder_changed)
         try: validate_upstream_execution(c,summary,observed_steps=result['optimizer_updates_observed'])
@@ -353,6 +432,7 @@ def training_worker(config_path):
             result.update(replay_verified=replay_verified, replay_consumption=replay_consumption,
                           final_test_guard=final_test_guard)
         (run_dir/'summary.json').write_text(json.dumps(result),encoding='utf-8')
+        if telemetry: telemetry.event('worker_complete')
     return result
 
 
@@ -402,17 +482,15 @@ def _worker_limits(config,run_dir):
             try:
                 elapsed=time.monotonic()-start;ram=_memory(os.getpid());vram=_gpu_memory(os.getpid()) if c['device']=='cuda' else 0
                 disk=_storage_bytes(config,run_dir)
+                trigger=_resource_trigger(c,ram,vram,disk,elapsed)
                 observations.update(peak_ram_bytes=max(observations['peak_ram_bytes'],ram),peak_vram_upper_bound_bytes=max(observations['peak_vram_upper_bound_bytes'],vram),peak_disk_bytes=max(observations['peak_disk_bytes'],disk),elapsed_seconds=elapsed)
                 reason=('time_limit' if elapsed>c['resources']['time_limit_seconds'] else 'ram_limit' if ram>c['resources']['ram_limit_bytes'] else 'vram_limit' if vram>c['resources'].get('vram_limit_bytes',float('inf')) else 'disk_limit' if disk>c['resources']['disk_limit_bytes'] else None)
+                current=current_telemetry()
+                if reason is None and current is not None and current.failed.is_set(): reason='telemetry_unavailable'
                 if reason:
-                    (run_dir/'limit_failure.json').write_text(json.dumps(dict(observations,reason=reason)),encoding='utf-8')
-                    for child in tuple(_ACTIVE_WORKERS):
-                        if child.poll() is None: child.terminate()
-                    os._exit(3)
+                    _stop_owned(run_dir,observations,reason,trigger)
             except Exception:
-                for child in tuple(_ACTIVE_WORKERS):
-                    if child.poll() is None: child.terminate()
-                os._exit(3)
+                _stop_owned(run_dir,observations,'resource_monitor_unavailable')
     # 시작 전에 monitor 가용성을 확인한다.
     _memory(os.getpid())
     if c['device'] == 'cuda': _gpu_memory(os.getpid())

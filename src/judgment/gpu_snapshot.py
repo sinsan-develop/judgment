@@ -19,10 +19,16 @@ def parse_adapter_memory(rows):
     return total
 
 
-def read_gpu_snapshot(path, *, now=None):
-    now = time.time() if now is None else now
+def read_gpu_snapshot(path, *, now=None, observation=None):
     try: value = json.loads(Path(path).read_text(encoding='utf-8'))
     except (OSError, ValueError): raise ConfigError('vram_monitor_unavailable') from None
+    used=validate_gpu_snapshot(value,now=now)
+    if observation is not None: observation.update(value)
+    return used
+
+
+def validate_gpu_snapshot(value, *, now=None):
+    now = time.time() if now is None else now
     if not isinstance(value, dict): raise ConfigError('vram_monitor_unavailable')
     stamp, used = value.get('sampled_epoch'), value.get('bytes_used')
     if (value.get('scope') != 'windows_gpu_adapter_upper_bound' or

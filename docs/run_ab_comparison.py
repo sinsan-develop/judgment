@@ -146,6 +146,12 @@ def diagnostics(rows, *, temperature, labels):
 
 
 def measure(root, folder, arm, config, model_dir):
+    from judgment.telemetry import Telemetry
+    with Telemetry(folder/arm,role='parent',arm=arm) as telemetry:
+        return _measure(root,folder,arm,config,model_dir,telemetry)
+
+
+def _measure(root, folder, arm, config, model_dir,telemetry):
     import torch
     from judgment.contracts import SOURCE_COMMIT, ScoredExample, ABSTAIN_ID
     from judgment.data import load_real_bundle
@@ -154,11 +160,13 @@ def measure(root, folder, arm, config, model_dir):
     bundle = load_real_bundle(config, roles=('calibration', 'selection'))
     labels = sorted({c.id for role in ('calibration', 'selection') for e in bundle.parts[role]
                      for c in e.request.candidates} | {ABSTAIN_ID})
-    adapter = LayaAdapter.from_local(model_dir, source_commit=SOURCE_COMMIT,
-                                    model_revision=config.values['model_revision'], device='cuda')
+    with telemetry.phase('measurement_model_load'):
+        adapter = LayaAdapter.from_local(model_dir, source_commit=SOURCE_COMMIT,
+                                        model_revision=config.values['model_revision'], device='cuda')
     torch.cuda.reset_peak_memory_stats()
     scored = {}
     for role in ('calibration', 'selection'):
+        telemetry.event('measurement_'+role,event='enter')
         rows = []
         for i, e in enumerate(bundle.parts[role], 1):
             score = adapter.score(e.request)
@@ -168,6 +176,7 @@ def measure(root, folder, arm, config, model_dir):
             if i % 100 == 0:
                 print(json.dumps({'stage': 'measurement', 'arm': arm, 'role': role, 'completed': i}), flush=True)
         scored[role] = tuple(rows)
+        telemetry.event('measurement_'+role,event='exit',position=len(rows))
     temperature = fit_temperatures(scored['calibration'], config=dict(
         temperature_min=.25, temperature_max=4., steps=41, min_samples=50))[5]
     reports = {role: {'raw': diagnostics(scored[role], temperature=1., labels=labels),
@@ -183,6 +192,7 @@ def measure(root, folder, arm, config, model_dir):
     save(folder / f'{arm}.measurement.private.json', result, immutable=True)
     del adapter
     gc.collect(); torch.cuda.empty_cache()
+    telemetry.event('measurement_complete')
     return result
 
 
@@ -215,6 +225,7 @@ def run(root):
     from judgment.replay import install_final_test_guard, validate_replay_files, remaining_trial_seconds
     from judgment.runner import preflight, run_training, _worker_limits, final_storage_check
     from judgment.data import load_real_bundle
+    from judgment.telemetry import gpu_baseline
     overall_start = time.monotonic()
     folder = root / '.work/ab_comparison'
     preparation = load(folder / 'preparation.private.json')
@@ -232,6 +243,8 @@ def run(root):
     global_values = deepcopy(arm_config(root, folder, 'A', preparation).values)
     global_values['resources']['time_limit_seconds'] = remaining_trial_seconds(overall_start, time.monotonic())
     global_config = bind(global_values)
+    snapshot=global_values['resources'].get('gpu_memory_snapshot_path')
+    if snapshot: gpu_baseline(snapshot,folder/'gpu.before-trial.private.json')
     with _worker_limits(global_config, folder) as global_resources:
         for arm in ('A', 'B'):
             arm_folder = folder / arm

@@ -1,5 +1,13 @@
 # judgment 작업현황
 
+## 2026-10-14 기록·중단 보완 승인 구현 / 담당 어울
+
+- 직접승인:4개기록·중단보완,실행직전adapter별GPU기준값,원문/비밀없는비공개worker출력,정상/강제중단작은모의시험. A/B재실행은결과확인뒤. 실행기준d75c09c/work-native-synthetic기존체크아웃,실데이터/모델/서비스/한도/학습조건변경0.
+- 순차TDD:새 telemetry 시험 RED(import미구현)→기본9시험PASS. 정상상태/완료갱신·갱신중미확인/출력허용숫자와나머지가림/기존context만allocator관측/atomic 이전자료보존/쓰기실패·멈춤/기준값/실제subprocess강제exit와owned 종료검증. Windows sandbox기본temp권한오류1회는프로젝트 .work/tmp로범위를명확히해해결.
+- 연결:worker단계/CPU·기존GPUallocator heartbeat·AdamW pre/post hook/고정upstream모델로드·학습전selection·train_model관측및복원,private출력pipe가림,hostadapter계수시계열·학습전baseline,stop의최대50ms best-effort기록후finally owned종료. 정상기록은atomic+fsync/최대200ms 대기,실패시완료를주장하지않고중단. 모의/코드점검중 nullcontext 로컬import shadow오류1회수정,후속43 영향PASS. 변경구현은ML수학/순서/6GiB설정에관여하지않는다.
+- 다음:추가pipeline 모의시험·필수영향검사·최종독립review1회→보완1회→안전checkpoint와PCWSL동일SHA의네트워크차단CPU/모의검증. own일회성시험container만생성/종료,학습/실GPUcontext/자료열기/역복사0. 실행환경준비를다시설치하거나수동자료검토를반복하지않는다.
+- 독립review1회 Critical0/Important2/Minor0:SIGTERM무시worker가남을수있음/실제trigger snapshot 연결부족. 각각RED확인후owned terminate+kill,판정에사용한thread-local snapshot/current RAM·GPU·disk·elapsed/한도/판정시각그대로기록으로1회수정. 기록실패·hang여전히최대50ms best-effort뒤finally 종료. 재리뷰없음. Windows영향49실행/48PASS/POSIX1SKIP,추가producer시계열+baseline1시험PASS. POSIX skip는PCWSL에서실제SIGTERM무시child·무관child보존으로확인할예정.
+
 ## 2026-10-14 PCWSL 실패 현지 진단·최소 기록안 / 담당 어울
 
 - 신산님 직접지시:현지실패로그읽기/중단단계·GPU집계확인/미확인명시/기록보완안제시만. 재학습·서비스종료·6GiB변경없음,Windows역복사는필수일때만별도묶음승인.

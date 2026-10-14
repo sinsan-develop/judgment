@@ -92,7 +92,7 @@ def remaining_trial_seconds(start, now):
 
 
 @contextmanager
-def observe_replay_consumption(manifest, *, module=None):
+def observe_replay_consumption(manifest, *, module=None, telemetry=None):
     if module is None:
         import laya.train as module
     original_train, original_encode = module.train_model, module.encode_item
@@ -113,7 +113,10 @@ def observe_replay_consumption(manifest, *, module=None):
                         'replay_effective_order')
                 observations['observed_input_positions'].append(positions[id(item)])
                 observations['exposures_observed'] += 1
-            return original_encode(tok, item, *args, **kwargs)
+            if telemetry: telemetry.event('training_microbatch',event='encode_enter',position=observations['exposures_observed'])
+            result=original_encode(tok, item, *args, **kwargs)
+            if telemetry: telemetry.event('training_microbatch',event='encoded_not_updated',position=observations['exposures_observed'])
+            return result
         module.encode_item = encode
         try:
             result = original_train(model, tok, items, config, *args, **kwargs)
